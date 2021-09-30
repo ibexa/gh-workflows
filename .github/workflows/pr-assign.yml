@@ -14,11 +14,6 @@ jobs:
         steps:
             - uses: actions/checkout@v2
 
-            - uses: jwalton/gh-find-current-pr@v1
-              id: findPr
-              with:
-                  sha: ${{ github.event.pull_request.head.sha }}
-
             - uses: octokit/request-action@v2.x
               name: Get list of assignees
               id: assignees
@@ -41,6 +36,6 @@ jobs:
                   ${{ steps.assignees.outputs.data }}
                   EOF
                   assignees=$(jq -r '.["content"]' input.json | base64 --decode)
-                  hub issue update ${{ steps.findPr.outputs.number }} -a $assignees
+                  hub issue update ${{ github.event.number }} -a $assignees
               env:
                   GITHUB_TOKEN: ${{ github.token }}
