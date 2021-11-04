@@ -1,41 +1,75 @@
+# Very Important Note:
+# Never, ever, under any circumstances run any commands that take inputs
+# from the PR for scripting purposes.
+# This is unsafe with pull_request_target trigger.
+# See: https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+
 name: Assign Pull Request to maintainers
 
 on:
-    workflow_call:
-        secrets:
-            robot-token:
-                description: 'A PAT token used by the app/robot'
-                required: true
+  workflow_call:
+    secrets:
+      robot-token:
+        description: 'A PAT token used by the app/robot'
+        required: true
 
 jobs:
-    assign:
-        runs-on: ubuntu-latest
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
 
-        steps:
-            - uses: actions/checkout@v2
+      - uses: octokit/request-action@v2.x
+        name: Get list of assignees
+        id: assignees
+        # Allow failures to be ignored.
+        # We will consider output as empty
+        continue-on-error: true
+        with:
+          owner: ibexa
+          repo: pr-assignees
+          route: /repos/{owner}/{repo}/contents/${{ github.repository }}/maintainers
+        env:
+          GITHUB_TOKEN: ${{ secrets.robot-token }}
 
-            - uses: octokit/request-action@v2.x
-              name: Get list of assignees
-              id: assignees
-                # Allow failures to be ignored.
-                # We will consider output as empty
-              continue-on-error: true
-              with:
-                  owner: ibexa
-                  repo: pr-assignees
-                  route: /repos/{owner}/{repo}/contents/${{ github.repository }}/maintainers
-              env:
-                  GITHUB_TOKEN: ${{ secrets.robot-token }}
+      - name: Decode Base64 for output
+        id: set-matrix
+        # If previous step failed we assume that we got 404
+        # and thus there are no maintainers to be assigned
+        if: ${{ steps.assignees.outputs.data }}
+        run: |
+          cat > input.json <<'EOF'
+          ${{ steps.assignees.outputs.data }}
+          EOF
+          output=$(jq -r '.["content"]' input.json | base64 --decode | jq -c .)
+          echo "::set-output name=matrix::$output"
 
-            - name: Assign Pull Request maintainers
-                # If previous step failed we assume that we got 404
-                # and thus there are no maintainers to be assigned
-              if: ${{ steps.assignees.outputs.data }}
-              run: |
-                  cat > input.json <<'EOF'
-                  ${{ steps.assignees.outputs.data }}
-                  EOF
-                  assignees=$(jq -r '.["content"]' input.json | base64 --decode)
-                  hub issue update ${{ github.event.number }} -a $assignees
-              env:
-                  GITHUB_TOKEN: ${{ github.token }}
+  assign:
+    needs: matrix
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix.outputs.matrix)}}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: tj-actions/changed-files@v10
+        id: changed-files
+        with:
+          sha: ${{ github.event.pull_request.head.sha }}
+          files: |
+            ${{ matrix.params.extension }}
+
+      - name: Assign Pull Request maintainers
+        if: ${{ steps.changed-files.outputs.any_changed }}
+        run: |
+          assignees=$(echo -n ${{ matrix.params.assignee }} | jq -sRc '{assignees:split(",")}')
+          echo $assignees | hub api -X POST /repos/${{ github.repository }}/issues/${{ github.event.number }}/assignees --input -
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
