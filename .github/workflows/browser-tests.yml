@@ -1,0 +1,153 @@
+on:
+    workflow_call:
+        inputs:
+            project-edition:
+                description: "Project edition to set up: oss, content, experience, commerce"
+                required: true
+                type: string
+            project-version:
+                description: "Project version to set up: ^3.3.x-dev, ^4.0.x-dev etc."
+                required: true
+                type: string
+            test-suite:
+                description: "Browser tests to run"
+                required: true
+                type: string
+            setup:
+                default: "doc/docker/base-dev.yml:doc/docker/selenium.yml"
+                description: "Docker Compose files to use"
+                required: false
+                type: string
+            test-setup-phase-1:
+                description: "Setup for browser tests - phase 1"
+                default: ""
+                required: false
+                type: string
+            test-setup-phase-2:
+                description: "Setup for browser tests - phase 2"
+                default: ""
+                required: false
+                type: string
+            multirepository:
+                default: false
+                description: "Whether the job is running on a multirepository setup"
+                required: false
+                type: boolean
+            php-image:
+                default: "ezsystems/php:7.4-v2-node14"
+                description: "The PHP image to use"
+                required: false
+                type: string
+            timeout:
+                default: 30
+                description: "Job maximum timeout in minutes"
+                required: false
+                type: number
+            composer-package-version:
+                default: ""
+                description: "The version of the package tested"
+                required: false
+                type: string
+        secrets:
+            SLACK_WEBHOOK_URL:
+                required: true
+            SATIS_NETWORK_KEY:
+                required: false
+            SATIS_NETWORK_TOKEN:
+                required: false
+            TRAVIS_GITHUB_TOKEN:
+                required: false
+
+env:
+    APP_ENV: behat
+    APP_DEBUG: 1
+    PHP_INI_ENV_memory_limit: 512M
+
+jobs:
+    browser-tests:
+        runs-on: ubuntu-latest
+        timeout-minutes: ${{ inputs.timeout }}
+
+        steps:
+            - if: contains(inputs.setup, 'doc/docker/varnish.yml')
+              name: "[Varnish] Set the URL the tests should access"
+              run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
+
+            - uses: actions/checkout@v2
+
+            - name: Setup PHP Action
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: 7.4
+                  coverage: none
+
+            - if: inputs.composer-package-version != ''
+              name: Set COMPOSER_ROOT_VERSION for packages with cyclic dependencies
+              run: echo "COMPOSER_ROOT_VERSION=${{ inputs.composer-package-version }}" >> $GITHUB_ENV
+
+            - if: env.SATIS_NETWORK_KEY != ''
+              name: Add composer keys for private packagist
+              run: |
+                  composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+                  composer config github-oauth.github.com $TRAVIS_GITHUB_TOKEN
+              env:
+                  SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
+                  SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
+                  TRAVIS_GITHUB_TOKEN: ${{ secrets.TRAVIS_GITHUB_TOKEN }}
+
+            - uses: "ramsey/composer-install@v1"
+              with:
+                  dependency-versions: "highest"
+                  composer-options: "--prefer-dist --no-progress"
+
+            - name: Set up whole project using the tested dependency
+              run: ./vendor/bin/prepare_project_edition.sh ${{ inputs.project-edition }} ${{ inputs.project-version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - if: inputs.multirepository
+              name: Set up multirepository build
+              run: $HOME/build/project/vendor/ezsystems/behatbundle/bin/.travis/prepare_multirepository_setup.sh
+
+            - if: inputs.test-setup-phase-1 != ''
+              name: Run first phase of tests setup
+              run: |
+                  cd ${HOME}/build/project
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ezbehat ${{ inputs.test-setup-phase-1 }}"
+
+            - if: inputs.test-setup-phase-2 != ''
+              name: Run second phase of tests setup
+              run: |
+                  cd ${HOME}/build/project
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ezbehat ${{ inputs.test-setup-phase-2 }}"
+
+            - name: Run tests
+              run: |
+                  cd ${HOME}/build/project
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ezbehat ${{ inputs.test-suite }}"
+
+            - if: always()
+              name: Upload tests report
+              run: |
+                  cd ${HOME}/build/project
+                  vendor/bin/ezreport
+
+    report-results:
+        runs-on: ubuntu-latest
+        timeout-minutes: 3
+        if: always() && github.event_name != 'pull_request'
+        needs: browser-tests
+        steps:
+            - name: Create Slack failure message
+              run: |
+                  echo "SLACK_PAYLOAD={\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \":x: Browser tests for $GITHUB_REPOSITORY repository have failed.\nCommiter: $GITHUB_ACTOR \nBranch: $GITHUB_REF_NAME \nDetails: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \"}}]}" >> $GITHUB_ENV
+            - if: ${{ needs.browser-tests.result == 'success' }}
+              name: Create Slack success message
+              run: |
+                  echo "SLACK_PAYLOAD={\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \":white_check_mark: Browser tests for $GITHUB_REPOSITORY repository have passed.\nCommiter: $GITHUB_ACTOR \nBranch: $GITHUB_REF_NAME \nDetails: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \"}}]}" >> $GITHUB_ENV
+            - name: Send notification about workflow result
+              uses: slackapi/slack-github-action@v1.16.0
+              with:
+                  payload: ${{ env.SLACK_PAYLOAD }}
+              env:
+                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
