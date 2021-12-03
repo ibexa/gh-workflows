@@ -56,8 +56,7 @@ jobs:
             REPO: ${{ steps.destinations.outputs.repo }}
             DEST_BRANCH: ${{ steps.destinations.outputs.destination }}
           run: |
-            git remote add cross https://github.com/${{ env.REPO }}
-            git remote set-url cross https://x-access-token:${{ env.TOKEN }}@github.com/${{ env.REPO }}
+            git remote add cross https://x-access-token:${{ env.TOKEN }}@github.com/${{ env.REPO }}
             # todo: implement generating *unique* temp branch
             # todo: check if *previous* temp branch exists
             git push cross HEAD:${{ env.DEST_BRANCH }} 2>&1
