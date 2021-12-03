@@ -1,0 +1,79 @@
+name: Cross merge
+
+on:
+  workflow_call:
+    secrets:
+      robot-token:
+        description: 'A PAT token used by the app/robot'
+        required: true
+
+jobs:
+  job:
+    runs-on: ubuntu-latest
+
+    steps:
+        - uses: actions/checkout@v2
+          with:
+            fetch-depth: 0
+            token: ${{ secrets.robot-token }}
+
+        - name: Inject slug/short variables
+          uses: rlespinasse/github-slug-action@v3.x
+
+        - name: Get merge map
+          uses: octokit/request-action@v2.x
+          id: map
+          # Allow failures to be ignored.
+          # We will consider output as empty
+          continue-on-error: true
+          with:
+            owner: ibexa
+            repo: cross-merge-map
+            route: /repos/{owner}/{repo}/contents/${{ github.repository }}
+          env:
+            GITHUB_TOKEN: ${{ secrets.robot-token }}
+
+        # Parse json and find destination branch and repository
+        - name: Set destination variables
+          id: destinations
+          if: ${{ steps.map.outputs.data }}
+          run: |
+            echo Looking for destionation for branch ${{ env.GITHUB_REF_SLUG }}
+            branch=$(echo '${{ env.MAP_DATA }}' | base64 --decode | jq -r '.["${{ env.GITHUB_REF_SLUG }}"]')
+            echo Destination branch found. It is ${branch}
+            repo=$(echo '${{ env.MAP_DATA }}' | base64 --decode | jq -r '.DEST')
+            destination=temp_${{ env.GITHUB_REF_SLUG }}_to_$branch
+            echo "::set-output name=branch::$branch"
+            echo "::set-output name=repo::$repo"
+            echo "::set-output name=destination::$destination"
+          env:
+            MAP_DATA: ${{ fromJSON(steps.map.outputs.data).content }}
+
+        - name: Push updated code to temporary branch
+          if: ${{ steps.destinations.outputs.branch }}
+          env:
+            TOKEN: ${{ secrets.robot-token }}
+            REPO: ${{ steps.destinations.outputs.repo }}
+            DEST_BRANCH: ${{ steps.destinations.outputs.destination }}
+          run: |
+            git remote add cross https://github.com/${{ env.REPO }}
+            git remote set-url cross https://x-access-token:${{ env.TOKEN }}@github.com/${{ env.REPO }}
+            # todo: implement generating *unique* temp branch
+            # todo: check if *previous* temp branch exists
+            git push cross HEAD:${{ env.DEST_BRANCH }} 2>&1
+
+        - name: Create Pull Request in Destination Repository
+          if: ${{ steps.destinations.outputs.branch }}
+          continue-on-error: true
+          env:
+            GITHUB_TOKEN: ${{ secrets.robot-token }}
+            REPO: ${{ steps.destinations.outputs.repo }}
+            DEST_BRANCH: ${{ steps.destinations.outputs.destination }}
+            SRC_BRANCH: ${{ steps.destinations.outputs.branch }}
+          run: |
+            # Remove "cross" remote that we just added
+            # If we don't, `gh pr` will break as it will try to read commits from all remotes
+            git remote rm cross
+            gh pr create --base ${{ env.SRC_BRANCH }} --head ${{ env.DEST_BRANCH }} \
+              --title "Merge branch '${{ env.SRC_BRANCH }}' ${{ github.repository }} into ${{ env.DEST_BRANCH }}" --body "Cross merge PR" \
+              -R ${{ env.REPO }}
