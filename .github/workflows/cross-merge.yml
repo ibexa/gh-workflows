@@ -1,4 +1,4 @@
-name: Cross merge
+name: Ibexa Reusable / Cross Org PR
 
 on:
   workflow_call:
