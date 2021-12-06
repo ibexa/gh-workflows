@@ -38,7 +38,7 @@ jobs:
           id: destinations
           if: ${{ steps.map.outputs.data }}
           run: |
-            echo Looking for destionation for branch ${{ env.GITHUB_REF_SLUG }}
+            echo Looking for destination for branch ${{ env.GITHUB_REF_SLUG }}
             branch=$(echo '${{ env.MAP_DATA }}' | base64 --decode | jq -r '.["${{ env.GITHUB_REF_SLUG }}"]')
             echo Destination branch found. It is ${branch}
             repo=$(echo '${{ env.MAP_DATA }}' | base64 --decode | jq -r '.DEST')
