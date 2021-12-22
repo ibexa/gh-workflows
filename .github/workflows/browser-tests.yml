@@ -43,11 +43,6 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
-            composer-package-version:
-                default: ""
-                description: "The version of the package tested"
-                required: false
-                type: string
         secrets:
             SLACK_WEBHOOK_URL:
                 required: true
@@ -62,6 +57,7 @@ env:
     APP_ENV: behat
     APP_DEBUG: 1
     PHP_INI_ENV_memory_limit: 512M
+    COMPOSER_CACHE_DIR: /home/runner/.composer/cache
 
 jobs:
     browser-tests:
@@ -81,9 +77,13 @@ jobs:
                   php-version: 7.4
                   coverage: none
 
-            - if: inputs.composer-package-version != ''
-              name: Set COMPOSER_ROOT_VERSION for packages with cyclic dependencies
-              run: echo "COMPOSER_ROOT_VERSION=${{ inputs.composer-package-version }}" >> $GITHUB_ENV
+            - name: Cache dependencies
+              uses: actions/cache@v2
+              with:
+                  path: ${{ env.COMPOSER_CACHE_DIR }}
+                  key: ${{ inputs.project-edition }}-${{ inputs.project-version }}-${{ inputs.php-image }}-${{ github.sha }}
+                  restore-keys: |
+                    ${{ inputs.project-edition }}-${{ inputs.project-version }}-${{ inputs.php-image }}
 
             - if: env.SATIS_NETWORK_KEY != ''
               name: Add composer keys for private packagist
@@ -95,13 +95,11 @@ jobs:
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
                   TRAVIS_GITHUB_TOKEN: ${{ secrets.TRAVIS_GITHUB_TOKEN }}
 
-            - uses: "ramsey/composer-install@v1"
-              with:
-                  dependency-versions: "highest"
-                  composer-options: "--prefer-dist --no-progress"
-
             - name: Set up whole project using the tested dependency
-              run: ./vendor/bin/prepare_project_edition.sh ${{ inputs.project-edition }} ${{ inputs.project-version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+              run: |
+                curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/main/bin/${{ inputs.project-version }}/prepare_project_edition.sh" > prepare_project_edition.sh
+                chmod +x prepare_project_edition.sh
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ inputs.project-version }} ${{ inputs.setup }} ${{ inputs.php-image }}
 
             - if: inputs.multirepository
               name: Set up multirepository build
@@ -133,17 +131,32 @@ jobs:
 
     report-results:
         runs-on: ubuntu-latest
+        name: "Send Slack notification"
         timeout-minutes: 3
         if: always() && github.event_name != 'pull_request'
         needs: browser-tests
         steps:
             - name: Create Slack failure message
-              run: |
-                  echo "SLACK_PAYLOAD={\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \":x: Browser tests for $GITHUB_REPOSITORY repository have failed.\nCommiter: $GITHUB_ACTOR \nBranch: $GITHUB_REF_NAME \nDetails: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \"}}]}" >> $GITHUB_ENV
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 :x: Browser tests for $GITHUB_REPOSITORY repository have failed.\n
+                 Commiter: $GITHUB_ACTOR \n
+                 Branch: $GITHUB_REF_NAME \n
+                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID 
+                 \"}}]}" >> $GITHUB_ENV
+
             - if: ${{ needs.browser-tests.result == 'success' }}
               name: Create Slack success message
-              run: |
-                  echo "SLACK_PAYLOAD={\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \":white_check_mark: Browser tests for $GITHUB_REPOSITORY repository have passed.\nCommiter: $GITHUB_ACTOR \nBranch: $GITHUB_REF_NAME \nDetails: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \"}}]}" >> $GITHUB_ENV
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 :white_check_mark: Browser tests for $GITHUB_REPOSITORY repository have passed.\n
+                 Commiter: $GITHUB_ACTOR \n
+                 Branch: $GITHUB_REF_NAME \n
+                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID 
+                 \"}}]}" >> $GITHUB_ENV
+
             - name: Send notification about workflow result
               uses: slackapi/slack-github-action@v1.16.0
               with:
