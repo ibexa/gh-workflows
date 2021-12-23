@@ -57,7 +57,7 @@ env:
     APP_ENV: behat
     APP_DEBUG: 1
     PHP_INI_ENV_memory_limit: 512M
-    COMPOSER_CACHE_DIR: /home/runner/.composer/cache
+    COMPOSER_CACHE_DIR: ~/.composer/cache
 
 jobs:
     browser-tests:
