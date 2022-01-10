@@ -74,5 +74,5 @@ jobs:
             # If we don't, `gh pr` will break as it will try to read commits from all remotes
             git remote rm cross
             gh pr create --base ${{ env.SRC_BRANCH }} --head ${{ env.DEST_BRANCH }} \
-              --title "Merge branch '${{ env.SRC_BRANCH }}' ${{ github.repository }} into ${{ env.DEST_BRANCH }}" --body "Cross merge PR" \
+              --title "Merge branch '${{ env.GITHUB_REF_SLUG }}' of ${{ github.repository }} into ${{ env.SRC_BRANCH }}" --body "Cross merge PR" \
               -R ${{ env.REPO }}
