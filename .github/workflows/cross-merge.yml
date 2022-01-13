@@ -38,16 +38,18 @@ jobs:
           id: destinations
           if: ${{ steps.map.outputs.data }}
           run: |
+            cat > input.json <<'EOF'
+            ${{ steps.map.outputs.data }}
+            EOF
+            jq -r '.["content"]' input.json | base64 --decode | jq -c . > map.json
             echo Looking for destination for branch ${{ env.GITHUB_REF_SLUG }}
-            branch=$(echo '${{ env.MAP_DATA }}' | base64 --decode | jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)')
+            branch=$(jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)' map.json)
             echo Destination branch found. It is ${branch}
-            repo=$(echo '${{ env.MAP_DATA }}' | base64 --decode | jq -r '.DEST')
+            repo=$(jq -r '.DEST' map.json)
             destination=temp_${{ env.GITHUB_REF_SLUG }}_to_$branch
             echo "::set-output name=branch::$branch"
             echo "::set-output name=repo::$repo"
             echo "::set-output name=destination::$destination"
-          env:
-            MAP_DATA: ${{ fromJSON(steps.map.outputs.data).content }}
 
         - name: Push updated code to temporary branch
           if: ${{ steps.destinations.outputs.branch }}
