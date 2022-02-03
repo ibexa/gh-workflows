@@ -67,7 +67,7 @@ jobs:
             ${{ matrix.params.extension }}
 
       - name: Assign Pull Request maintainers
-        if: ${{ steps.changed-files.outputs.any_changed }}
+        if: ${{ steps.changed-files.outputs.any_changed }} == 'true'
         run: |
           assignees=$(echo -n ${{ matrix.params.assignee }} | jq -sRc '{assignees:split(",")}')
           echo $assignees | hub api -X POST /repos/${{ github.repository }}/issues/${{ github.event.number }}/assignees --input -
