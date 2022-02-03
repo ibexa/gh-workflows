@@ -69,6 +69,10 @@ jobs:
       - name: Assign Pull Request maintainers
         if: ${{ steps.changed-files.outputs.any_changed }}
         run: |
+          if [[ "$CHANGED" == "false" ]]; then
+            echo "There are no actual matches and we've just stumbled upon a GitHub Actions type casting bug"
+            exit 0
+          fi
           assignees=$(echo -n ${{ matrix.params.assignee }} | jq -sRc '{assignees:split(",")}')
           echo $assignees | hub api -X POST /repos/${{ github.repository }}/issues/${{ github.event.number }}/assignees --input -
         env:
