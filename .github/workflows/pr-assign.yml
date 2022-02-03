@@ -59,7 +59,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: tj-actions/changed-files@v12
+      - uses: ibexa-yuna/changed-files@v12-b
         id: changed-files
         with:
           sha: ${{ github.event.pull_request.head.sha }}
