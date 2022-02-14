@@ -38,6 +38,11 @@ on:
                 description: "The PHP image to use"
                 required: false
                 type: string
+            ci-scripts-branch:
+                default: "main"
+                description: "The branch from ibexa/ci-scripts repository that should be used"
+                required: false
+                type: string
             timeout:
                 default: 30
                 description: "Job maximum timeout in minutes"
@@ -97,7 +102,7 @@ jobs:
 
             - name: Set up whole project using the tested dependency
               run: |
-                curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/main/bin/${{ inputs.project-version }}/prepare_project_edition.sh" > prepare_project_edition.sh
+                curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ inputs.project-version }}/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
                 ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ inputs.project-version }} ${{ inputs.setup }} ${{ inputs.php-image }}
 
