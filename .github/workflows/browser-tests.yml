@@ -43,6 +43,11 @@ on:
                 description: "The branch from ibexa/ci-scripts repository that should be used"
                 required: false
                 type: string
+            use-compatibility-layer:
+                default: false
+                type: boolean
+                required: false
+                description: "Use the compatibility layer when running tests"
             timeout:
                 default: 30
                 description: "Job maximum timeout in minutes"
@@ -105,6 +110,14 @@ jobs:
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ inputs.project-version }}/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
                 ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ inputs.project-version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - if: inputs.use-compatibility-layer
+              name: Set up compatibility-layer
+              run: |
+                cd ${HOME}/build/project
+                docker-compose --env-file=.env exec -T --user www-data app sh -c "composer require ibexa/compatibility-layer:^4.0.x-dev --no-scripts --no-plugins"
+                docker-compose --env-file=.env exec -T --user www-data app sh -c "composer recipes:install ibexa/compatibility-layer --force"
+                docker-compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
 
             - if: inputs.multirepository
               name: Set up multirepository build
