@@ -59,17 +59,26 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: ibexa-yuna/changed-files@v12-b
+      - name: Check PR files against mask
         id: changed-files
-        with:
-          sha: ${{ github.event.pull_request.head.sha }}
-          files: |
-            ${{ matrix.params.extension }}
+        shell: bash {0} # Disable fail-fast when no match is found
+        run: |
+          matches=$(hub api /repos/${REPO}/pulls/${PR}/files | jq -r '.[].filename | split("/") | .[-1]' | grep -Ec '${{ matrix.params.extension }}')
+          if [ "${matches}" -ge 1 ]; then
+            output=1
+          else
+            output=0
+          fi
+          echo "::set-output name=matches::$output"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.number }}
 
       - name: Assign Pull Request maintainers
-        if: ${{ steps.changed-files.outputs.any_changed }}
+        if: steps.changed-files.outputs.matches == 1
         run: |
-          if [[ "$CHANGED" == "false" ]]; then
+          if [[ "x$CHANGED" == "x0" ]]; then
             echo "There are no actual matches and we've just stumbled upon a GitHub Actions type casting bug"
             exit 0
           fi
@@ -77,4 +86,4 @@ jobs:
           echo $assignees | hub api -X POST /repos/${{ github.repository }}/issues/${{ github.event.number }}/assignees --input -
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CHANGED: ${{ steps.changed-files.outputs.any_changed }}
+          CHANGED: ${{ steps.changed-files.outputs.matches }}
