@@ -73,7 +73,8 @@ jobs:
     browser-tests:
         runs-on: ubuntu-latest
         timeout-minutes: ${{ inputs.timeout }}
-
+        outputs:
+            report-url: ${{ steps.report.outputs.report-url }}
         steps:
             - if: contains(inputs.setup, 'doc/docker/varnish.yml')
               name: "[Varnish] Set the URL the tests should access"
@@ -137,25 +138,30 @@ jobs:
               name: Run first phase of tests setup
               run: |
                   cd ${HOME}/build/project
-                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ezbehat ${{ inputs.test-setup-phase-1 }}"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
 
             - if: inputs.test-setup-phase-2 != ''
               name: Run second phase of tests setup
               run: |
                   cd ${HOME}/build/project
                   docker-compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
-                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ezbehat ${{ inputs.test-setup-phase-2 }}"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
 
             - name: Run tests
               run: |
                   cd ${HOME}/build/project
-                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ezbehat ${{ inputs.test-suite }}"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }}"
 
             - if: always()
+              id: report
               name: Upload tests report
+              continue-on-error: true
               run: |
                   cd ${HOME}/build/project
-                  vendor/bin/ezreport
+                  echo "::set-output name=report-url::failure occured when uploading the report"
+                  REPORT_URL=$(vendor/bin/ibexareport)
+                  echo "See the report at $REPORT_URL"
+                  echo "::set-output name=report-url::$REPORT_URL"
 
     report-results:
         runs-on: ubuntu-latest
@@ -163,6 +169,8 @@ jobs:
         timeout-minutes: 3
         if: always() && github.event_name != 'pull_request'
         needs: browser-tests
+        env:
+            REPORT_URL: ${{needs.browser-tests.outputs.report-url}}
         steps:
             - name: Create Slack failure message
               run: >
@@ -171,7 +179,8 @@ jobs:
                  :x: Browser tests for $GITHUB_REPOSITORY repository have failed.\n
                  Commiter: $GITHUB_ACTOR \n
                  Branch: $GITHUB_REF_NAME \n
-                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID 
+                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \n
+                 Report: $REPORT_URL
                  \"}}]}" >> $GITHUB_ENV
 
             - if: ${{ needs.browser-tests.result == 'success' }}
@@ -182,7 +191,8 @@ jobs:
                  :white_check_mark: Browser tests for $GITHUB_REPOSITORY repository have passed.\n
                  Commiter: $GITHUB_ACTOR \n
                  Branch: $GITHUB_REF_NAME \n
-                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID 
+                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \n
+                 Report: $REPORT_URL
                  \"}}]}" >> $GITHUB_ENV
 
             - name: Send notification about workflow result
