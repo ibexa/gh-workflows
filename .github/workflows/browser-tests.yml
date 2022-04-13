@@ -48,6 +48,10 @@ on:
                 type: boolean
                 required: false
                 description: "Use the compatibility layer when running tests"
+            recipes-endpoint:
+                type: string
+                required: false
+                description: "Custom Symfony Flex endpoint to use"
             timeout:
                 default: 30
                 description: "Job maximum timeout in minutes"
@@ -79,6 +83,10 @@ jobs:
             - if: contains(inputs.setup, 'doc/docker/varnish.yml')
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
+
+            - if: inputs.recipes-endpoint != ''
+              name: "[Symfony Flex] Use the custom Symfony Flex endpoint provided"
+              run: echo "SYMFONY_ENDPOINT=${{ inputs.recipes-endpoint }}" >> $GITHUB_ENV
 
             - uses: actions/checkout@v2
 
