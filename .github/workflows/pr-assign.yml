@@ -63,7 +63,7 @@ jobs:
         id: changed-files
         shell: bash {0} # Disable fail-fast when no match is found
         run: |
-          matches=$(hub api /repos/${REPO}/pulls/${PR}/files | jq -r '.[].filename | split("/") | .[-1]' | grep -Ec '${{ matrix.params.extension }}')
+          matches=$(hub api /repos/${REPO}/pulls/${PR}/files | jq -r '.[].filename | split("/") | .[-1]' | pcregrep -c '${{ matrix.params.extension }}')
           if [ "${matches}" -ge 1 ]; then
             output=1
           else
