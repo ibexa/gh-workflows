@@ -159,44 +159,32 @@ jobs:
               continue-on-error: true
               run: |
                   cd ${HOME}/build/project
-                  echo "::set-output name=report-url::failure occured when uploading the report"
                   REPORT_URL=$(vendor/bin/ibexareport)
+                  echo "REPORT_URL=$REPORT_URL" >> $GITHUB_ENV
                   echo "See the report at $REPORT_URL"
-                  echo "::set-output name=report-url::$REPORT_URL"
 
-    report-results:
-        runs-on: ubuntu-latest
-        name: "Send Slack notification"
-        timeout-minutes: 3
-        if: always() && github.event_name != 'pull_request'
-        needs: browser-tests
-        env:
-            REPORT_URL: ${{needs.browser-tests.outputs.report-url}}
-        steps:
-            - name: Create Slack failure message
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack failure message
               run: >
                  echo "SLACK_PAYLOAD=
                  {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
-                 :x: Browser tests for $GITHUB_REPOSITORY repository have failed.\n
-                 Commiter: $GITHUB_ACTOR \n
-                 Branch: $GITHUB_REF_NAME \n
-                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \n
-                 Report: $REPORT_URL
+                 :x: *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
+                 <$REPORT_URL|Report>
                  \"}}]}" >> $GITHUB_ENV
 
-            - if: ${{ needs.browser-tests.result == 'success' }}
+            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
               name: Create Slack success message
               run: >
                  echo "SLACK_PAYLOAD=
                  {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
-                 :white_check_mark: Browser tests for $GITHUB_REPOSITORY repository have passed.\n
-                 Commiter: $GITHUB_ACTOR \n
-                 Branch: $GITHUB_REF_NAME \n
-                 Details: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID \n
-                 Report: $REPORT_URL
+                 :white_check_mark: *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
+                 <$REPORT_URL|Report>
                  \"}}]}" >> $GITHUB_ENV
 
-            - name: Send notification about workflow result
+            - if: always() && github.event_name != 'pull_request'
+              name: Send notification about workflow result
               uses: slackapi/slack-github-action@v1.16.0
               with:
                   payload: ${{ env.SLACK_PAYLOAD }}
