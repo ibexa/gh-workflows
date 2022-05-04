@@ -46,10 +46,10 @@ jobs:
           ${{ steps.map.outputs.data }}
           EOF
           jq -r '.["content"]' input.json | base64 --decode | jq -c . > map.json
-          echo Looking for destination for branch ${{ env.GITHUB_REF_SLUG }}
-          branch=$(jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)' map.json)
-          echo Destination branch found. It is ${branch} branch
-          destination=$branch
+          branch=${{ env.GITHUB_REF_SLUG }}
+          echo Looking for destination for branch $branch
+          destination=$(jq -r '.["$branch"] | select (.!=null)' map.json)
+          echo Destination branch found. It is ${destination} branch
           echo "SOURCE_BRANCH=$branch" >> $GITHUB_ENV
           echo "DEST_BRANCH=$destination" >> $GITHUB_ENV
           echo "::set-output name=destination::$destination"
