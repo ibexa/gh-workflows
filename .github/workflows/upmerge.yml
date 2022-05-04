@@ -55,7 +55,7 @@ jobs:
           echo "::set-output name=destination::$destination"
 
       - name: Checkout code
-        if: ${{ steps.destinations.outputs.branch }}
+        if: ${{ steps.destinations.outputs.destination }}
         uses: actions/checkout@v2
         with:
           ref: ${{ env.DEST_BRANCH }}
@@ -64,12 +64,12 @@ jobs:
           token: ${{ secrets.robot-token }}
 
       - name: Perform Upmerge of ${{ env.SOURCE_BRANCH }} to ${{ env.DEST_BRANCH }}
-        if: ${{ steps.destinations.outputs.branch }}
+        if: ${{ steps.destinations.outputs.destination }}
         run: |
           git merge -m "Merged branch '${{ env.SOURCE_BRANCH }}' into ${{ env.DEST_BRANCH }}" origin/$SOURCE_BRANCH
 
       - name: Push changes
-        if: ${{ steps.destinations.outputs.branch }}
+        if: ${{ steps.destinations.outputs.destination }}
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.robot-token }}
