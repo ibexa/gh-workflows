@@ -1,0 +1,70 @@
+name: Upmerge branch (callee)
+
+on:
+  workflow_call:
+    secrets:
+      robot-token:
+        description: 'A PAT token used by the app/robot'
+        required: true
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.robot-token }}
+
+      - name: Inject slug/short variables
+        uses: rlespinasse/github-slug-action@v3.x
+
+      - name: Get merge map
+        uses: octokit/request-action@v2.x
+        id: map
+        # Allow failures to be ignored.
+        # We will consider output as empty
+        continue-on-error: true
+        with:
+          owner: ibexa
+          repo: upmerge-map
+          route: /repos/{owner}/{repo}/contents/${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.robot-token }}
+
+      # Parse json and find destination branch and repository
+      - name: Set variables
+        if: ${{ steps.map.outputs.data }}
+        run: |
+          cat > input.json <<'EOF'
+          ${{ steps.map.outputs.data }}
+          EOF
+          jq -r '.["content"]' input.json | base64 --decode | jq -c . > map.json
+          echo Looking for destination for branch ${{ env.GITHUB_REF_SLUG }}
+          branch=$(jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)' map.json)
+          echo Destination branch found. It is ${branch} branch
+          destination=$branch
+          echo "SOURCE_BRANCH=$branch" >> $GITHUB_ENV
+          echo "DEST_BRANCH=$destination" >> $GITHUB_ENV
+
+      - name: Set environment
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com>"
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ env.DEST_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Perform Upmerge of ${{ env.SOURCE_BRANCH }} to ${{ env.DEST_BRANCH }}
+        run: |
+          git merge -m "Merged branch '${{ env.SOURCE_BRANCH }}' into ${{ env.DEST_BRANCH }}" origin/$SOURCE_BRANCH
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.robot-token }}
+          branch: ${{ env.DEST_BRANCH }}
