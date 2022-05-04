@@ -34,6 +34,7 @@ jobs:
 
       # Parse json and find destination branch and repository
       - name: Set variables
+        id: destinations
         if: ${{ steps.map.outputs.data }}
         run: |
           cat > input.json <<'EOF'
@@ -46,6 +47,7 @@ jobs:
           destination=$branch
           echo "SOURCE_BRANCH=$branch" >> $GITHUB_ENV
           echo "DEST_BRANCH=$destination" >> $GITHUB_ENV
+          echo "::set-output name=destination::$destination"
 
       - name: Set environment
         run: |
@@ -53,17 +55,21 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com>"
 
       - name: Checkout code
+        if: ${{ steps.destinations.outputs.branch }}
         uses: actions/checkout@v2
         with:
           ref: ${{ env.DEST_BRANCH }}
           fetch-depth: 0
           persist-credentials: false
+          token: ${{ secrets.robot-token }}
 
       - name: Perform Upmerge of ${{ env.SOURCE_BRANCH }} to ${{ env.DEST_BRANCH }}
+        if: ${{ steps.destinations.outputs.branch }}
         run: |
           git merge -m "Merged branch '${{ env.SOURCE_BRANCH }}' into ${{ env.DEST_BRANCH }}" origin/$SOURCE_BRANCH
 
       - name: Push changes
+        if: ${{ steps.destinations.outputs.branch }}
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.robot-token }}
