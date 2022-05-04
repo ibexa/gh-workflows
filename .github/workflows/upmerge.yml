@@ -16,6 +16,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.robot-token }}
 
+      - name: Set environment
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com>"
+
       - name: Inject slug/short variables
         uses: rlespinasse/github-slug-action@v3.x
 
@@ -48,11 +53,6 @@ jobs:
           echo "SOURCE_BRANCH=$branch" >> $GITHUB_ENV
           echo "DEST_BRANCH=$destination" >> $GITHUB_ENV
           echo "::set-output name=destination::$destination"
-
-      - name: Set environment
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com>"
 
       - name: Checkout code
         if: ${{ steps.destinations.outputs.branch }}
