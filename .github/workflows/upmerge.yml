@@ -48,7 +48,7 @@ jobs:
           jq -r '.["content"]' input.json | base64 --decode | jq -c . > map.json
           branch=${{ env.GITHUB_REF_SLUG }}
           echo Looking for destination for branch $branch
-          destination=$(jq -r '.["$branch"] | select (.!=null)' map.json)
+          destination=$(jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)' map.json)
           echo Destination branch found. It is ${destination} branch
           echo "SOURCE_BRANCH=$branch" >> $GITHUB_ENV
           echo "DEST_BRANCH=$destination" >> $GITHUB_ENV
