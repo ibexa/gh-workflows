@@ -6,7 +6,7 @@ on:
                 required: true
                 type: string
             project-version:
-                description: "Project version to set up: ^3.3.x-dev, ^4.0.x-dev etc."
+                description: "Project version to set up: ^3.3.x-dev, 4.0.x-dev, 4.1.x-dev, 4.2.x-dev"
                 required: true
                 type: string
             test-suite:
@@ -48,6 +48,11 @@ on:
                 type: boolean
                 required: false
                 description: "Use the compatibility layer when running tests"
+            job-count:
+                default: 1
+                required: false
+                type: number
+                description: "Number of jobs that will run the tests in parallel"
             timeout:
                 default: 30
                 description: "Job maximum timeout in minutes"
@@ -70,9 +75,30 @@ env:
     COMPOSER_CACHE_DIR: ~/.composer/cache
 
 jobs:
+    setup-jobs:
+        runs-on: ubuntu-latest
+        timeout-minutes: 1
+        outputs:
+          matrix: ${{ steps.generate-matrix.outputs.matrix }}
+        steps:
+            - name: Set job count for builds
+              run: echo "JOB_COUNT=${{ inputs.job-count }}" >> $GITHUB_ENV
+            - name: Set job count for PR builds
+              if: github.event_name == 'pull_request'
+              run: echo "JOB_COUNT=1" >> $GITHUB_ENV
+            - name: Generate matrix
+              id: generate-matrix
+              run: |
+                MATRIX=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.JOB_COUNT }} - 1)]);')
+                echo "::set-output name=matrix::$MATRIX"
+
     browser-tests:
+        needs: setup-jobs
         runs-on: ubuntu-latest
         timeout-minutes: ${{ inputs.timeout }}
+        strategy:
+          fail-fast: false
+          matrix: ${{ fromJson(needs.setup-jobs.outputs.matrix) }}
         outputs:
             report-url: ${{ steps.report.outputs.report-url }}
         steps:
@@ -151,7 +177,7 @@ jobs:
             - name: Run tests
               run: |
                   cd ${HOME}/build/project
-                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }}"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }} --group-count=${{ inputs.job-count }} --group-offset=${{ matrix.offset }}"
 
             - if: always()
               id: report
@@ -164,23 +190,26 @@ jobs:
                   echo "See the report at $REPORT_URL"
 
             - if: always() && github.event_name != 'pull_request'
-              name: Create Slack failure message
-              run: >
-                 echo "SLACK_PAYLOAD=
-                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
-                 :x: *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
-                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
-                 <$REPORT_URL|Report>
-                 \"}}]}" >> $GITHUB_ENV
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+                JOB_NUMBER=$(expr ${{ matrix.offset }} + 1)
+                echo "JOB_NUMBER=$JOB_NUMBER" >> $GITHUB_ENV
 
             - if: always() && job.status == 'success' && github.event_name != 'pull_request'
-              name: Create Slack success message
+              name: Create Slack message success variables
+              run: |
+                echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message
               run: >
                  echo "SLACK_PAYLOAD=
                  {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
-                 :white_check_mark: *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
+                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                  <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
                  <$REPORT_URL|Report>
+                 ($JOB_NUMBER/${{ inputs.job-count }})
                  \"}}]}" >> $GITHUB_ENV
 
             - if: always() && github.event_name != 'pull_request'
