@@ -102,7 +102,7 @@ jobs:
         outputs:
             report-url: ${{ steps.report.outputs.report-url }}
         steps:
-            - if: contains(inputs.setup, 'doc/docker/varnish.yml')
+            - if: contains(inputs.setup, 'varnish')
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
 
