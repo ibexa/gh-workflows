@@ -80,6 +80,7 @@ jobs:
         timeout-minutes: 1
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
+          job-count: ${{ steps.generate-matrix.outputs.job-count }}
         steps:
             - name: Set job count for builds
               run: echo "JOB_COUNT=${{ inputs.job-count }}" >> $GITHUB_ENV
@@ -91,6 +92,7 @@ jobs:
               run: |
                 MATRIX=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.JOB_COUNT }} - 1)]);')
                 echo "::set-output name=matrix::$MATRIX"
+                echo "::set-output name=job-count::$JOB_COUNT"
 
     browser-tests:
         needs: setup-jobs
@@ -177,7 +179,7 @@ jobs:
             - name: Run tests
               run: |
                   cd ${HOME}/build/project
-                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }} --group-count=${{ env.JOB_COUNT }} --group-offset=${{ matrix.offset }}"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }} --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }}"
 
             - if: always()
               id: report
