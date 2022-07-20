@@ -53,6 +53,11 @@ on:
                 required: false
                 type: number
                 description: "Number of jobs that will run the tests in parallel"
+            send-success-notification:
+                default: true
+                required: false
+                type: boolean
+                description: "Send a notification when the tests pass"
             timeout:
                 default: 30
                 description: "Job maximum timeout in minutes"
@@ -214,7 +219,7 @@ jobs:
                  ($JOB_NUMBER/${{ inputs.job-count }})
                  \"}}]}" >> $GITHUB_ENV
 
-            - if: always() && github.event_name != 'pull_request'
+            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
               name: Send notification about workflow result
               uses: slackapi/slack-github-action@v1.16.0
               with:
