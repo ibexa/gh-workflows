@@ -207,6 +207,8 @@ jobs:
               if: inputs.percy != ''
               run: |
                   cd ${HOME}/build/project
+                  echo 'COMPOSE_FILE="${{inputs.setup}}"' >> .env
+                  cat .env
                   docker ps
                   docker-compose ps
                   docker-compose top
