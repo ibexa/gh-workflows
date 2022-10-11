@@ -63,6 +63,9 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
+            percy:
+                required: false
+                type: string
         secrets:
             SLACK_WEBHOOK_URL:
                 required: true
