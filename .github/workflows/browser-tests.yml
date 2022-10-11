@@ -207,7 +207,9 @@ jobs:
               if: inputs.percy != ''
               run: |
                   cd ${HOME}/build/project
-                  docker-compose --env-file=.env exec  percy npx percy exec:stop
+                  docker ps
+                  docker-compose logs percy
+                  docker-compose --env-file=.env exec percy npx percy exec:stop
 
             - if: always()
               id: report
