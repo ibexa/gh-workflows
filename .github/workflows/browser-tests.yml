@@ -203,22 +203,23 @@ jobs:
                   cd ${HOME}/build/project
                   docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }} --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }}"
 
-            - name: Stop Percy
-              if: inputs.percy != ''
-              run: |
-                  cd ${HOME}/build/project
-                  export COMPOSE_FILE="${{inputs.setup}}"
-                  echo $COMPOSE_FILE
-                  cat .env
-                  docker ps
-                  docker-compose ps
-                  docker-compose top
-                  docker-compose config --services
-                  docker-compose --env-file=.env ps
-                  docker-compose --env-file=.env top
-                  docker-compose --env-file=.env config --services
-                  docker-compose --env-file=.env logs percy
-                  docker-compose --env-file=.env exec -T percy sh -c "npx percy exec:stop"
+            # - name: Stop Percy
+            #   if: inputs.percy != ''
+            #   run: |
+            #       set -x
+            #       cd ${HOME}/build/project
+            #       export COMPOSE_FILE="${{inputs.setup}}"
+            #       echo $COMPOSE_FILE
+            #       cat .env
+            #       docker ps
+            #       docker-compose ps
+            #       docker-compose top
+            #       docker-compose config --services
+            #       docker-compose --env-file=.env ps
+            #       docker-compose --env-file=.env top
+            #       docker-compose --env-file=.env config --services
+            #       docker-compose --env-file=.env logs percy
+            #       docker-compose --env-file=.env exec -T percy sh -c "npx percy exec:stop" --verbose
 
             - if: always()
               id: report
