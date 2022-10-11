@@ -208,7 +208,8 @@ jobs:
               run: |
                   cd ${HOME}/build/project
                   docker ps
-                  docker-compose ls
+                  docker-compose ps
+                  docker-compose top
                   docker-compose config --services
                   docker-compose --env-file=.env logs percy
                   docker-compose --env-file=.env exec percy npx percy exec:stop
