@@ -218,7 +218,7 @@ jobs:
                   docker-compose --env-file=.env top
                   docker-compose --env-file=.env config --services
                   docker-compose --env-file=.env logs percy
-                  docker-compose --env-file=.env exec percy npx percy exec:stop
+                  docker-compose --env-file=.env -T exec percy npx percy exec:stop
 
             - if: always()
               id: report
