@@ -197,6 +197,10 @@ jobs:
                   cd ${HOME}/build/project
                   docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }} --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }}"
 
+            - name: Stop Percy
+            - if: inputs.percy != ''
+              run: docker-compose --env-file=.env exec  percy npx percy exec:stop
+
             - if: always()
               id: report
               name: Upload tests report
