@@ -118,7 +118,7 @@ jobs:
 
             - uses: actions/checkout@v2
 
-            - name: Stop Percy
+            - name: Start Percy
               if: inputs.percy != ''
               run: |
                 echo "PERCY_TOKEN=${{ inputs.percy }}" >> $GITHUB_ENV                           
@@ -205,7 +205,9 @@ jobs:
 
             - name: Stop Percy
               if: inputs.percy != ''
-              run: docker-compose --env-file=.env exec  percy npx percy exec:stop
+              run: |
+                  cd ${HOME}/build/project
+                  docker-compose --env-file=.env exec  percy npx percy exec:stop
 
             - if: always()
               id: report
