@@ -207,12 +207,17 @@ jobs:
               if: inputs.percy != ''
               run: |
                   cd ${HOME}/build/project
-                  echo 'COMPOSE_FILE="${{inputs.setup}}"' >> .env
+                  export COMPOSE_FILE="${{inputs.setup}}"
+                  echo $COMPOSE_FILE
+                  sudo echo 'COMPOSE_FILE="${{inputs.setup}}"' >> .env
                   cat .env
                   docker ps
                   docker-compose ps
                   docker-compose top
                   docker-compose config --services
+                  docker-compose --env-file=.env ps
+                  docker-compose --env-file=.env top
+                  docker-compose --env-file=.env config --services
                   docker-compose --env-file=.env logs percy
                   docker-compose --env-file=.env exec percy npx percy exec:stop
 
