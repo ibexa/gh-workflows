@@ -209,7 +209,6 @@ jobs:
                   cd ${HOME}/build/project
                   export COMPOSE_FILE="${{inputs.setup}}"
                   echo $COMPOSE_FILE
-                  sudo echo 'COMPOSE_FILE="${{inputs.setup}}"' >> .env
                   cat .env
                   docker ps
                   docker-compose ps
