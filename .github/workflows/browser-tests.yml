@@ -66,6 +66,9 @@ on:
             percy:
                 required: false
                 type: string
+            cloudinary:
+                required: false
+                type: string
         secrets:
             SLACK_WEBHOOK_URL:
                 required: true
@@ -121,7 +124,12 @@ jobs:
             - name: Start Percy
               if: inputs.percy != ''
               run: |
-                echo "PERCY_TOKEN=${{ inputs.percy }}" >> $GITHUB_ENV                           
+                echo "PERCY_TOKEN=${{ inputs.percy }}" >> $GITHUB_ENV
+
+            - name: Start cloudinary
+              if: inputs.cloudinary != ''
+              run: |
+                echo "CLOUDINARY_URL=${{ inputs.cloudinary }}" >> $GITHUB_ENV   
 
             - name: Setup PHP Action
               uses: shivammathur/setup-php@v2
