@@ -43,7 +43,7 @@ jobs:
           ${{ steps.assignees.outputs.data }}
           EOF
           output=$(jq -r '.["content"]' input.json | base64 --decode | jq -c .)
-          echo "::set-output name=matrix::$output"
+          echo "matrix=$output" >> $GITHUB_OUTPUT
 
   assign:
     needs: matrix
@@ -54,7 +54,7 @@ jobs:
       matrix: ${{fromJson(needs.matrix.outputs.matrix)}}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
@@ -72,7 +72,7 @@ jobs:
           else
             output=0
           fi
-          echo "::set-output name=matches::$output"
+          echo "matches=$output" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
