@@ -59,7 +59,7 @@ on:
                 type: boolean
                 description: "Send a notification when the tests pass"
             timeout:
-                default: 30
+                default: 60
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
