@@ -192,7 +192,7 @@ jobs:
             - name: Run tests
               run: |
                   cd ${HOME}/build/project
-                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-suite }} --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }}"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }}"
 
             - if: always()
               id: report
