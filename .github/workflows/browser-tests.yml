@@ -72,6 +72,10 @@ on:
                 required: false
             TRAVIS_GITHUB_TOKEN:
                 required: false
+            PERCY_TOKEN:
+                required: false
+            CLOUDINARY_URL:
+                required: false
 
 env:
     APP_ENV: behat
@@ -145,6 +149,9 @@ jobs:
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ inputs.project-version }}/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
                 ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ inputs.project-version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+              env:
+                PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+                CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
 
             - if: startsWith(inputs.project-version, 'v')
               name: Set up whole project using a stable release
