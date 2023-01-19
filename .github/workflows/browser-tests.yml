@@ -139,7 +139,7 @@ jobs:
                   restore-keys: |
                     ${{ inputs.project-edition }}-${{ inputs.project-version }}-${{ inputs.php-image }}
 
-            - if: env.SATIS_NETWORK_KEY != ''
+            - if: env.AUTOMATION_CLIENT_SECRET != ''
               name: Generate token
               id: generate_token
               uses: tibdex/github-app-token@v1
@@ -154,11 +154,18 @@ jobs:
               name: Add composer keys for private packagist
               run: |
                   composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
-                  composer config github-oauth.github.com $GITHUB_APP_TOKEN
+                  composer config github-oauth.github.com $GITHUB_TOKEN
               env:
                   SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
-                  GITHUB_APP_TOKEN: ${{ steps.generate_token.outputs.token }}
+                  GITHUB_TOKEN: ${{ secrets.TRAVIS_GITHUB_TOKEN }}
+
+            - if: steps.generate_token.outputs.token != ''
+              name: Add composer key for GitHub App
+              run: |
+                  composer config github-oauth.github.com $GITHUB_TOKEN
+              env:
+                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
             - if: startsWith(inputs.project-version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
