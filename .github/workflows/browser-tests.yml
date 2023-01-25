@@ -99,9 +99,6 @@ jobs:
         steps:
             - name: Set job count for builds
               run: echo "JOB_COUNT=${{ inputs.job-count }}" >> $GITHUB_ENV
-            - name: Set job count for PR builds
-              if: github.event_name == 'pull_request'
-              run: echo "JOB_COUNT=1" >> $GITHUB_ENV
             - name: Generate matrix
               id: generate-matrix
               run: |
