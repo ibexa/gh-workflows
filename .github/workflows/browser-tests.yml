@@ -185,8 +185,8 @@ jobs:
               name: Set up compatibility-layer
               run: |
                 cd ${HOME}/build/project
-                docker-compose --env-file=.env exec -T --user www-data app sh -c "composer require ibexa/compatibility-layer:${{ inputs.project-version }} --no-scripts --no-plugins"
-                docker-compose --env-file=.env exec -T --user www-data app sh -c "composer recipes:install ibexa/compatibility-layer --force"
+                docker-compose --env-file=.env exec -T app sh -c "composer require ibexa/compatibility-layer:${{ inputs.project-version }} --no-scripts --no-plugins"
+                docker-compose --env-file=.env exec -T app sh -c "composer recipes:install ibexa/compatibility-layer --force"
                 docker-compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
 
             - if: inputs.multirepository
