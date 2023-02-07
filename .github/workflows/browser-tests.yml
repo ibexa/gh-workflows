@@ -172,7 +172,8 @@ jobs:
             - if: steps.generate_token.outputs.token != ''
               name: Add composer key for GitHub App
               run: |
-                  composer config github-oauth.github.com $GITHUB_TOKEN
+                  composer config github-oauth.github.com --unset
+                  composer config http-basic.github.com x-access-token $GITHUB_TOKEN
               env:
                   GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
