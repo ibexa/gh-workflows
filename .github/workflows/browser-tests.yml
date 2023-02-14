@@ -99,7 +99,16 @@ jobs:
         steps:
             - name: Set job count for builds
               run: echo "JOB_COUNT=${{ inputs.job-count }}" >> $GITHUB_ENV
-            - name: Set job count for v3.3 PR builds
+            - name: (v4) Limit job-count to max 3 for PRs
+              if: github.event_name == 'pull_request'
+              run: |
+                if [[ "$JOB_COUNT" -gt 3 ]] ; then
+                  JOB_COUNT=3
+                fi
+                echo "JOB_COUNT=$JOB_COUNT" >> $GITHUB_ENV
+              env:
+                JOB_COUNT: ${{ env.JOB_COUNT }}
+            - name: (v3) Limit job-count to 1 for PRs
               if: github.event_name == 'pull_request' && inputs.project-version == '^3.3.x-dev'
               run: echo "JOB_COUNT=1" >> $GITHUB_ENV
             - name: Generate matrix
