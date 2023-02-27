@@ -47,9 +47,9 @@ jobs:
             echo Destination branch found. It is ${branch}
             repo=$(jq -r '.DEST' map.json)
             destination=temp_${{ env.GITHUB_REF_SLUG }}_to_$branch
-            echo "::set-output name=branch::$branch"
-            echo "::set-output name=repo::$repo"
-            echo "::set-output name=destination::$destination"
+            echo "{branch}={$branch}" >> $GITHUB_OUTPUT
+            echo "{repo}={$repo}" >> $GITHUB_OUTPUT
+            echo "{destination}={$destination}" >> $GITHUB_OUTPUT
 
         - name: Push updated code to temporary branch
           if: ${{ steps.destinations.outputs.branch }}
