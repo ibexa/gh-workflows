@@ -115,8 +115,8 @@ jobs:
               id: generate-matrix
               run: |
                 matrix=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.job_count }} - 1)]);')
-                echo "{matrix}={$matrix}" >> $GITHUB_OUTPUT
-                echo "{job-count}={$job_count}" >> $GITHUB_OUTPUT
+                echo "matrix=$matrix" >> $GITHUB_OUTPUT
+                echo "job-count=$job_count" >> $GITHUB_OUTPUT
 
     browser-tests:
         needs: setup-jobs
