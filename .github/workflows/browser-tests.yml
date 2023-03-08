@@ -98,25 +98,25 @@ jobs:
           job-count: ${{ steps.generate-matrix.outputs.job-count }}
         steps:
             - name: Set job count for builds
-              run: echo "JOB_COUNT=${{ inputs.job-count }}" >> $GITHUB_ENV
+              run: echo "job_count=${{ inputs.job-count }}" >> $GITHUB_ENV
             - name: (v4) Limit job-count to max 3 for PRs
               if: github.event_name == 'pull_request'
               run: |
-                if [[ "$JOB_COUNT" -gt 3 ]] ; then
-                  JOB_COUNT=3
+                if [[ "$job_count" -gt 3 ]] ; then
+                  job_count=3
                 fi
-                echo "JOB_COUNT=$JOB_COUNT" >> $GITHUB_ENV
+                echo "job_count=$job_count" >> $GITHUB_ENV
               env:
-                JOB_COUNT: ${{ env.JOB_COUNT }}
+                job_count: ${{ env.job_count }}
             - name: (v3) Limit job-count to 1 for PRs
               if: github.event_name == 'pull_request' && inputs.project-version == '^3.3.x-dev'
-              run: echo "JOB_COUNT=1" >> $GITHUB_ENV
+              run: echo "job_count=1" >> $GITHUB_ENV
             - name: Generate matrix
               id: generate-matrix
               run: |
-                MATRIX=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.JOB_COUNT }} - 1)]);')
-                echo "::set-output name=matrix::$MATRIX"
-                echo "::set-output name=job-count::$JOB_COUNT"
+                matrix=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.job_count }} - 1)]);')
+                echo "matrix=$matrix" >> $GITHUB_OUTPUT
+                echo "job-count=$job_count" >> $GITHUB_OUTPUT
 
     browser-tests:
         needs: setup-jobs
@@ -130,18 +130,18 @@ jobs:
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
 
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v3
 
             - name: Set up project version
               id: project-version
               run: |
-                if [[ "$VERSION" == "" ]] ; then
+                if [[ "$version" == "" ]] ; then
                     echo "Input project version not set, taking the value from composer.json"
-                    VERSION=$(cat composer.json | jq -r '.extra | ."branch-alias" | .[]')
+                    version=$(cat composer.json | jq -r '.extra | ."branch-alias" | .[]')
                 fi
-                echo "version=$VERSION" >> $GITHUB_OUTPUT
+                echo "version=$version" >> $GITHUB_OUTPUT
               env:
-                VERSION: ${{ inputs.project-version }}
+                version: ${{ inputs.project-version }}
 
             - name: Setup PHP Action
               uses: shivammathur/setup-php@v2
@@ -150,7 +150,7 @@ jobs:
                   coverage: none
 
             - name: Cache dependencies
-              uses: actions/cache@v2
+              uses: actions/cache@v3
               with:
                   path: ${{ env.COMPOSER_CACHE_DIR }}
                   key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
