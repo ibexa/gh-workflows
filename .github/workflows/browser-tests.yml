@@ -278,7 +278,7 @@ jobs:
 
             - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
               name: Send notification about workflow result
-              uses: slackapi/slack-github-action@v1.16.0
+              uses: slackapi/slack-github-action@v1.23.0
               with:
                   payload: ${{ env.SLACK_PAYLOAD }}
               env:
