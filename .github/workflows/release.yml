@@ -1,7 +1,16 @@
 name: Create Release for tag
 
 on:
-  workflow_call: ~
+  workflow_call:
+    secrets:
+      AUTOMATION_CLIENT_ID:
+        required: true
+      AUTOMATION_CLIENT_INSTALLATION:
+        required: true
+      AUTOMATION_CLIENT_SECRET:
+        required: true
+      JIRA_TOKEN:
+        required: true
 
 jobs:
   provide_changed_packages:
