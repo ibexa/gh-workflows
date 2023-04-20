@@ -145,7 +145,7 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
       - name: Create Release
         id: create_release
-        uses: zendesk/action-create-release@v2
+        uses: zendesk/action-gh-release@v1
         with:
           tag_name: ${{ env.BUILD_TAG }}
           body: |
