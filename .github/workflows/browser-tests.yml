@@ -139,6 +139,9 @@ jobs:
                     echo "Input project version not set, taking the value from composer.json"
                     version=$(cat composer.json | jq -r '.extra | ."branch-alias" | .[]')
                 fi
+                if [[ "$version" == "3.3.x-dev" ]] ; then
+                    version="^3.3.x-dev"
+                fi
                 echo "version=$version" >> $GITHUB_OUTPUT
               env:
                 version: ${{ inputs.project-version }}
