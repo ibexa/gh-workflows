@@ -246,16 +246,6 @@ jobs:
                   cd ${HOME}/build/project
                   docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }}"
 
-            - if: always()
-              id: report
-              name: Upload tests report
-              continue-on-error: true
-              run: |
-                  cd ${HOME}/build/project
-                  REPORT_URL=$(vendor/bin/ibexareport)
-                  echo "REPORT_URL=$REPORT_URL" >> $GITHUB_ENV
-                  echo "See the report at $REPORT_URL"
-
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
               run: |
@@ -275,7 +265,6 @@ jobs:
                  {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
                  $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                  <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
-                 <$REPORT_URL|Report>
                  ($JOB_NUMBER/${{ inputs.job-count }})
                  \"}}]}" >> $GITHUB_ENV
 
