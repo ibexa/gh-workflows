@@ -265,7 +265,7 @@ jobs:
                  {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
                  $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                  <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
-                 ($JOB_NUMBER/${{ inputs.job-count }})
+                 $JOB_NUMBER/${{ inputs.job-count }}
                  \"}}]}" >> $GITHUB_ENV
 
             - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
