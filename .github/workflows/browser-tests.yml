@@ -248,7 +248,7 @@ jobs:
             - name: Run tests
               run: |
                   cd ${HOME}/build/project
-                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }}"
+                  docker-compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }} --process=1"
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
