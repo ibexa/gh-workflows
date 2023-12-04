@@ -208,6 +208,9 @@ jobs:
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
                 ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+              env:
+                PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+                CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
 
             - if: inputs.use-compatibility-layer
               name: Set up compatibility-layer
