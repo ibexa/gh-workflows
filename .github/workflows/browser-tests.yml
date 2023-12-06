@@ -188,10 +188,6 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
-            - if: contains(inputs.php-image, 'php:8')
-              name: Set PHP error reporting
-              run: echo "PHP_INI_ENV_error_reporting=E_ALL&~E_DEPRECATED" >> $GITHUB_ENV
-
             - if: startsWith(steps.project-version.outputs.version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
               run: |
