@@ -82,6 +82,12 @@ on:
                 required: false
             CLOUDINARY_URL:
                 required: false
+            LAMBDATEST_PROJECT_TOKEN:
+                required: false
+            LAMBDATEST_USERNAME:
+                required: false
+            LAMBDATEST_ACCESS_KEY:
+                required: false
 
 env:
     APP_ENV: behat
@@ -197,6 +203,9 @@ jobs:
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
+                LAMBDATEST_PROJECT_TOKEN: ${{ secrets.LAMBDATEST_PROJECT_TOKEN }}
+                LAMBDATEST_USERNAME: "${{ secrets.LAMBDATEST_USERNAME }}"
+                LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
 
             - if: startsWith(steps.project-version.outputs.version, 'v')
               name: Set up whole project using a stable release
@@ -207,6 +216,9 @@ jobs:
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
+                LAMBDATEST_PROJECT_TOKEN: ${{ secrets.LAMBDATEST_PROJECT_TOKEN }}
+                LAMBDATEST_USERNAME: "${{ secrets.LAMBDATEST_USERNAME }}"
+                LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
 
             - if: inputs.use-compatibility-layer
               name: Set up compatibility-layer
