@@ -22,7 +22,7 @@ jobs:
       - name: Set Environment
         run: |
           echo "BUILD_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # load current composer.lock
       - id: currentLock
@@ -46,7 +46,7 @@ jobs:
           prevFullTag: ${{ steps.prevfull.outputs.tag }}
 
       # checkout previous tag
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ steps.prevrelease.outputs.previousTag }}
 
