@@ -136,7 +136,7 @@ jobs:
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
 
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
 
             - name: Set up project version
               id: project-version
@@ -159,7 +159,7 @@ jobs:
                   coverage: none
 
             - name: Cache dependencies
-              uses: actions/cache@v3
+              uses: actions/cache@v4
               with:
                   path: ${{ env.COMPOSER_CACHE_DIR }}
                   key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
