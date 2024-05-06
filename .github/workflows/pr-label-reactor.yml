@@ -1,0 +1,36 @@
+name: PR Label Reactor
+
+on:
+  workflow_call: ~
+
+jobs:
+  labeler:
+    if: github.event.action == 'labeled'
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Set channel ID based on label
+      run: |
+        if [[ "${{ github.event.label.name }}" == "Ready for QA" ]]; then
+          echo "channel-id=ready-for-qa" >> $GITHUB_ENV
+        elif [[ "${{ github.event.label.name }}" == "QA approved" ]]; then
+          echo "channel-id=pull-requests" >> $GITHUB_ENV
+        fi
+
+    - name: slack-send
+      if: ${{ env.channel-id }}
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      uses: slackapi/slack-github-action@v1.26.0
+      with:
+        channel-id: ${{ env.channel-id }}
+        slack-message: "${{ github.event.pull_request._links.html.href }} from @${{ github.event.pull_request.user.login }} is now ${{ github.event.label.name }}"
+
+  unlabeler:
+    if: github.event.action == 'unlabeled'
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Placeholder
+      run: |
+        echo "This is a placeholder for when a label is removed."
