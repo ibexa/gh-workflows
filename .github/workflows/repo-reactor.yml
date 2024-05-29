@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       feature_linter:
-        default: "true"
+        default: true
         type: boolean
 
 jobs:
