@@ -1,0 +1,15 @@
+name: Repository Reactor / Linters
+
+on:
+  workflow_call:
+
+jobs:
+  yamljson:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: json-yaml-validate
+        uses: GrantBirki/json-yaml-validate@v2.7.1
+        with:
+          use_dot_match: "false"

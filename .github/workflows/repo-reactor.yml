@@ -2,11 +2,13 @@ name: Ibexa Reusable / Repository Reactor
 
 on:
   workflow_call:
+    inputs:
+      feature_linter:
+        default: "true"
+        type: bool
 
 jobs:
-  linter:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ibiqlik/action-yamllint@v3
+  linters:
+    if: ${{ inputs.feature_linter }}
+    uses: ibexa/gh-workflows/.github/workflows/reactor-linters.yml@main
+    secrets: inherit
