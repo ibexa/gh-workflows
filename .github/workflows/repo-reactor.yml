@@ -5,7 +5,7 @@ on:
     inputs:
       feature_linter:
         default: "true"
-        type: bool
+        type: boolean
 
 jobs:
   linters:
