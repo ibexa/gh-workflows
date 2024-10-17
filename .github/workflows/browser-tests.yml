@@ -97,7 +97,7 @@ env:
 
 jobs:
     setup-jobs:
-        runs-on: ubuntu-latest
+        runs-on: rhel9
         timeout-minutes: 1
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
@@ -126,7 +126,7 @@ jobs:
 
     browser-tests:
         needs: setup-jobs
-        runs-on: ubuntu-latest
+        runs-on: rhel9
         timeout-minutes: ${{ inputs.timeout }}
         strategy:
           fail-fast: false
@@ -153,10 +153,12 @@ jobs:
                 version: ${{ inputs.project-version }}
 
             - name: Setup PHP Action
-              uses: shivammathur/setup-php@v2
-              with:
-                  php-version: 7.4
-                  coverage: none
+              run: |
+                echo "Skip."
+#              uses: shivammathur/setup-php@v2
+#              with:
+#                  php-version: 7.4
+#                  coverage: none
 
             - name: Cache dependencies
               uses: actions/cache@v4
@@ -288,6 +290,15 @@ jobs:
               run: |
                   cd ${HOME}/build/project
                   docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }} --process=1"
+
+            - name: Stop compose
+              if: always()
+              run: |
+                  cd ${HOME}/build/project
+                  docker compose down
+                  docker stop ibexa-solr-1 ibexa-selenium-1 ibexa-elastic-1 ibexa-varnish-1 ibexa-redis-1 || true
+                  docker rm ibexa-solr-1 ibexa-selenium-1 ibexa-elastic-1 ibexa-varnish-1 ibexa-redis-1 || true
+                  docker compose down
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
