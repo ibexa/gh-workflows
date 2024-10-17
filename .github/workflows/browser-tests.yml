@@ -295,7 +295,7 @@ jobs:
               if: always()
               run: |
                   cd ${HOME}/build/project
-                  docker compose down
+                  docker stop ibexa-solr-1 ibexa-selenium-1 # TODO (es, redis, varnish)
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
