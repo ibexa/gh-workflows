@@ -295,7 +295,7 @@ jobs:
               if: always()
               run: |
                   cd ${HOME}/build/project
-                  docker compose down"
+                  docker compose down
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
