@@ -296,8 +296,8 @@ jobs:
               run: |
                   cd ${HOME}/build/project
                   docker compose down
-                  docker stop ibexa-solr-1 ibexa-selenium-1 ibexa-elastic-1 ibexa-varnish-1 ibexa-redis-1 || true
-                  docker rm ibexa-solr-1 ibexa-selenium-1 ibexa-elastic-1 ibexa-varnish-1 ibexa-redis-1 || true
+                  docker stop ibexa-solr-1 ibexa-selenium-1 ibexa-elasticsearch-1 ibexa-varnish-1 ibexa-redis-1 || true
+                  docker rm ibexa-solr-1 ibexa-selenium-1 ibexa-elasticsearch-1 ibexa-varnish-1 ibexa-redis-1 || true
                   docker compose down
 
             - if: always() && github.event_name != 'pull_request'
