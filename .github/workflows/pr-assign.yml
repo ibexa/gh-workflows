@@ -59,7 +59,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
       
       - name: Install pcregrep
-        run: sudo apt-get install -y pcregrep hub
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pcregrep hub
 
       - name: Check PR files against mask
         id: changed-files
