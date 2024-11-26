@@ -97,7 +97,7 @@ env:
 
 jobs:
     setup-jobs:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04 # Current latest (stable) is 22.04
         timeout-minutes: 1
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
@@ -126,7 +126,7 @@ jobs:
 
     browser-tests:
         needs: setup-jobs
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: ${{ inputs.timeout }}
         strategy:
           fail-fast: false
