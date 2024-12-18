@@ -97,8 +97,7 @@ env:
 
 jobs:
     setup-jobs:
-        runs-on:
-          group: ubuntu-runners
+        runs-on: ubuntu-latest
         timeout-minutes: 1
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
@@ -118,6 +117,14 @@ jobs:
             - name: (v3) Limit job-count to 1 for PRs
               if: github.event_name == 'pull_request' && inputs.project-version == '^3.3.x-dev'
               run: echo "job_count=1" >> $GITHUB_ENV
+            - name: Select Random OS
+              id: select-os
+              run: |
+                OS_ARRAY=("ubuntu-20.04" "ubuntu-22.04" "ubuntu-24.04")
+                RANDOM_INDEX=$(( RANDOM % ${#OS_ARRAY[@]} ))
+                SELECTED_OS=${OS_ARRAY[$RANDOM_INDEX]}
+                echo "selected_os=$SELECTED_OS" >> $GITHUB_ENV
+                echo "selected_os=$SELECTED_OS" >> $GITHUB_OUTPUT
             - name: Generate matrix
               id: generate-matrix
               run: |
@@ -127,13 +134,14 @@ jobs:
 
     browser-tests:
         needs: setup-jobs
-        runs-on:
-          group: ubuntu-runners
+        runs-on: ${{ needs.setup-jobs.outputs.selected_os }}
         timeout-minutes: ${{ inputs.timeout }}
         strategy:
           fail-fast: false
           matrix: ${{ fromJson(needs.setup-jobs.outputs.matrix) }}
         steps:
+            - name: Check OS
+              run: echo "Running on ${{ runner.os }}"
             - if: contains(inputs.setup, 'varnish')
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
