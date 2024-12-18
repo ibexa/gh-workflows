@@ -63,7 +63,7 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
-            selected_os:
+            selected-os:
                 default: "ubuntu-latest"
                 description: "Ubuntu OS version"
                 required: false
@@ -107,6 +107,7 @@ jobs:
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
           job-count: ${{ steps.generate-matrix.outputs.job-count }}
+          selected-os: ${{ steps.select-os.outputs.selected-os }}
         steps:
             - name: Set job count for builds
               run: echo "job_count=${{ inputs.job-count }}" >> $GITHUB_ENV
@@ -128,8 +129,8 @@ jobs:
                 OS_ARRAY=("ubuntu-20.04" "ubuntu-22.04" "ubuntu-24.04")
                 RANDOM_INDEX=$(( RANDOM % ${#OS_ARRAY[@]} ))
                 SELECTED_OS=${OS_ARRAY[$RANDOM_INDEX]}
-                echo "selected_os=$SELECTED_OS" >> $GITHUB_ENV
-                echo "selected_os=$SELECTED_OS" >> $GITHUB_OUTPUT
+                echo "selected-os=$SELECTED_OS" >> $GITHUB_ENV
+                echo "selected-os=$SELECTED_OS" >> $GITHUB_OUTPUT
             - name: Generate matrix
               id: generate-matrix
               run: |
@@ -139,7 +140,7 @@ jobs:
 
     browser-tests:
         needs: setup-jobs
-        runs-on: ${{ needs.setup-jobs.outputs.selected_os }}
+        runs-on: ${{ needs.setup-jobs.outputs.selected-os }}
         timeout-minutes: ${{ inputs.timeout }}
         strategy:
           fail-fast: false
