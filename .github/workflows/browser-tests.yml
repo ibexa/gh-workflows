@@ -63,6 +63,11 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
+            selected_os:
+                default: "ubuntu-latest"
+                description: "Ubuntu OS version"
+                required: false
+                type: string
         secrets:
             SLACK_WEBHOOK_URL:
                 required: true
