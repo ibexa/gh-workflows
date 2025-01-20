@@ -64,7 +64,7 @@ on:
                 required: false
                 type: number
             selected-os:
-                default: "ubuntu-latest"
+                default: ""
                 description: "Ubuntu OS version"
                 required: false
                 type: string
@@ -126,9 +126,13 @@ jobs:
             - name: Select Random OS
               id: select-os
               run: |
-                OS_ARRAY=("ubuntu-20.04" "ubuntu-22.04" "ubuntu-24.04")
-                RANDOM_INDEX=$(( RANDOM % ${#OS_ARRAY[@]} ))
-                SELECTED_OS=${OS_ARRAY[$RANDOM_INDEX]}
+                if [ -z "${{ github.event.inputs.selected-os }}" ]; then
+                  OS_ARRAY=("ubuntu-20.04" "ubuntu-22.04" "ubuntu-24.04")
+                  RANDOM_INDEX=$(( RANDOM % ${#OS_ARRAY[@]} ))
+                  SELECTED_OS=${OS_ARRAY[$RANDOM_INDEX]}
+                else
+                  SELECTED_OS=${{ github.event.inputs.selected-os }}
+                fi
                 echo "selected-os=$SELECTED_OS" >> $GITHUB_ENV
                 echo "selected-os=$SELECTED_OS" >> $GITHUB_OUTPUT
             - name: Generate matrix
