@@ -64,7 +64,7 @@ on:
                 required: false
                 type: number
             selected-os:
-                default: ""
+                default: "ubuntu-latest"
                 description: "Ubuntu OS version"
                 required: false
                 type: string
@@ -107,7 +107,7 @@ jobs:
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
           job-count: ${{ steps.generate-matrix.outputs.job-count }}
-          selected-os: ${{ steps.select-os.outputs.selected-os }}
+          selected-os: ${{ steps.set-output.outputs.selected-os }}
         steps:
             - name: Set job count for builds
               run: echo "job_count=${{ inputs.job-count }}" >> $GITHUB_ENV
@@ -123,18 +123,33 @@ jobs:
             - name: (v3) Limit job-count to 1 for PRs
               if: github.event_name == 'pull_request' && inputs.project-version == '^3.3.x-dev'
               run: echo "job_count=1" >> $GITHUB_ENV
+            - name: Download Artifact (if it exists)
+              uses: actions/download-artifact@v3
+              with:
+                name: selected-os
+                path: .
             - name: Select Random OS
               id: select-os
               run: |
-                if [ -z "${{ github.event.inputs.selected-os }}" ]; then
+                if [ ! -f selected_os.txt ]; then
+                  echo "selected_os.txt not found. Selecting a random OS."
                   OS_ARRAY=("ubuntu-20.04" "ubuntu-22.04" "ubuntu-24.04")
                   RANDOM_INDEX=$(( RANDOM % ${#OS_ARRAY[@]} ))
                   SELECTED_OS=${OS_ARRAY[$RANDOM_INDEX]}
+                  echo "$SELECTED_OS" > selected_os.txt
                 else
-                  SELECTED_OS=${{ github.event.inputs.selected-os }}
+                  echo "selected_os.txt exists. Using previously selected OS."
+                  cat selected_os.txt
                 fi
-                echo "selected-os=$SELECTED_OS" >> $GITHUB_ENV
-                echo "selected-os=$SELECTED_OS" >> $GITHUB_OUTPUT
+            - name: Upload Artifact
+              uses: actions/upload-artifact@v3
+              with:
+                name: selected-os
+                path: selected_os.txt
+            - name: Extract Selected OS for Outputs
+              id: set-output
+              run: |
+                echo "selected-os=$(cat selected_os.txt)" >> $GITHUB_OUTPUT
             - name: Generate matrix
               id: generate-matrix
               run: |
