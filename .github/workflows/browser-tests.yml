@@ -150,6 +150,7 @@ jobs:
               id: set-output
               run: |
                 echo "selected-os=$(cat selected_os.txt)" >> $GITHUB_OUTPUT
+                echo "Extracted value is: ${selected-os}"
             - name: Generate matrix
               id: generate-matrix
               run: |
