@@ -124,10 +124,10 @@ jobs:
               if: github.event_name == 'pull_request' && inputs.project-version == '^3.3.x-dev'
               run: echo "job_count=1" >> $GITHUB_ENV
             - name: Download Artifact (if it exists)
-              uses: actions/download-artifact@v3
-              with:
-                name: selected-os
-                path: .
+              run: |
+                if ! actions/download-artifact --name selected-os --path .; then
+                  echo "Artifact not found. Continuing without it."
+                fi
             - name: Select Random OS
               id: select-os
               run: |
