@@ -107,7 +107,7 @@ jobs:
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
           job-count: ${{ steps.generate-matrix.outputs.job-count }}
-          selected-os: ${{ steps.set-output.outputs.selected-os }}
+          selected-os: ${{ steps.set-output.outputs.selected_os }}
         steps:
             - name: Set job count for builds
               run: echo "job_count=${{ inputs.job-count }}" >> $GITHUB_ENV
@@ -149,8 +149,8 @@ jobs:
             - name: Extract Selected OS for Outputs
               id: set-output
               run: |
-                echo "selected-os=$(cat selected_os.txt)" >> $GITHUB_OUTPUT
-                echo "Extracted value is: ${selected-os}"
+                echo "selected_os=$(cat selected_os.txt)" >> $GITHUB_OUTPUT
+                echo "Extracted value is: ${selected_os}"
             - name: Generate matrix
               id: generate-matrix
               run: |
