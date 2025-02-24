@@ -31,12 +31,6 @@ jobs:
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
                   TRAVIS_GITHUB_TOKEN: ${{ secrets.TRAVIS_GITHUB_TOKEN }}
 
-            - name: 'Add Ibexa Rector dependency'
-              run: |
-                  # determine product version, fall back to ~5.0.x-dev if not possible  
-                  version='~'$(jq -r '.extra | ."branch-alias" | ."dev-main" // ."dev-master" // "5.0.x-dev"' < composer.json)
-                  composer require --dev --no-update ibexa/rector:"$version"
-
             - name: 'Install Composer dependencies'
               uses: ramsey/composer-install@v3
               with:
