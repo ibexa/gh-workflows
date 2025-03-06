@@ -127,7 +127,7 @@ jobs:
               name: Create Slack message variables
               run: |
                 echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
-            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
+            - if: always() && job.status == 'success' && github.event_name == 'pull_request'
               name: Create Slack message success variables
               run: |
                 echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
