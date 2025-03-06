@@ -123,10 +123,18 @@ jobs:
                 matrix=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.job_count }} - 1)]);')
                 echo "matrix=$matrix" >> $GITHUB_OUTPUT
                 echo "job-count=$job_count" >> $GITHUB_OUTPUT
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
+              name: Create Slack message success variables
+              run: |
+                echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
             - if: always() && github.event_name == 'pull_request'
               name: Create Slack message
               run: >
-                echo "SLACK_PAYLOAD_SETUP=
+                echo "SLACK_PAYLOAD=
                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
@@ -135,7 +143,7 @@ jobs:
               name: Send notification about workflow result
               uses: slackapi/slack-github-action@v1.23.0
               with:
-                payload: ${{ env.SLACK_PAYLOAD_SETUP }}
+                payload: ${{ env.SLACK_PAYLOAD }}
               env:
                 SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
                 SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
