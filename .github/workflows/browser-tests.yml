@@ -123,7 +123,7 @@ jobs:
                 matrix=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.job_count }} - 1)]);')
                 echo "matrix=$matrix" >> $GITHUB_OUTPUT
                 echo "job-count=$job_count" >> $GITHUB_OUTPUT
-            - if: always() && github.event_name != 'pull_request'
+            - if: always() && github.event_name == 'pull_request'
               name: Create Slack message variables
               run: |
                 echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
