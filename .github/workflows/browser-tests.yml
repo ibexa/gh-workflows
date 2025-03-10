@@ -123,15 +123,15 @@ jobs:
                 matrix=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.job_count }} - 1)]);')
                 echo "matrix=$matrix" >> $GITHUB_OUTPUT
                 echo "job-count=$job_count" >> $GITHUB_OUTPUT
-            - if: always() && github.event_name == 'pull_request'
+            - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
               run: |
                 echo "RESULT_EMOJI=❌" >> $GITHUB_ENV
-            - if: always() && job.status == 'success' && github.event_name == 'pull_request'
+            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
               name: Create Slack message success variables
               run: |
                 echo "RESULT_EMOJI=✅" >> $GITHUB_ENV
-            - if: always() && github.event_name == 'pull_request'
+            - if: always() && github.event_name != 'pull_request'
               name: Create Slack message
               run: >
                 echo "SLACK_PAYLOAD=
@@ -139,7 +139,7 @@ jobs:
                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
                 \"}}]}" >> $GITHUB_ENV
-            - if: always() && github.event_name == 'pull_request' && (job.status == 'success' || inputs.send-success-notification)
+            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
               name: Send notification about workflow result
               uses: slackapi/slack-github-action@v1.23.0
               with:
