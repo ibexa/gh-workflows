@@ -127,10 +127,6 @@ jobs:
               name: Create Slack message variables
               run: |
                 echo "RESULT_EMOJI=❌" >> $GITHUB_ENV
-            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
-              name: Create Slack message success variables
-              run: |
-                echo "RESULT_EMOJI=✅" >> $GITHUB_ENV
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message
               run: >
@@ -139,7 +135,7 @@ jobs:
                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
                 \"}}]}" >> $GITHUB_ENV
-            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
+            - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
               name: Send notification about workflow result
               uses: slackapi/slack-github-action@v1.23.0
               with:
