@@ -88,6 +88,8 @@ on:
                 required: false
             LAMBDATEST_ACCESS_KEY:
                 required: false
+            OPENAI_API_KEY:
+                required: false
 
 env:
     APP_ENV: behat
