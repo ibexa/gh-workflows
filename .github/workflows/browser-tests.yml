@@ -260,7 +260,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c "vendor/bin/ibexabehat --mode=standard --profile=setup --suite=multirepository -c=behat_ibexa_oss.yaml --tags=~@elastic"
                 docker compose exec -T --user www-data app sh -c "composer run post-install-cmd"
                 # Reinstall database using the new repository
-                docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install"
+                docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
             - if: inputs.multirepository && contains(inputs.setup, 'elastic.yml')
               name: Set up multirepository build with Elastic
@@ -274,7 +274,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c "vendor/bin/ibexabehat --mode=standard --profile=setup --suite=multirepository -c=behat_ibexa_oss.yaml --tags=~@solr"
                 docker compose exec -T --user www-data app sh -c "composer run post-install-cmd"
                 # Reinstall database using the new repository
-                docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install"
+                docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
             - if: inputs.multirepository && !contains(inputs.setup, 'elastic.yml') && !contains(inputs.setup, 'solr.yml')
               name: Set up multirepository build with LSE
@@ -288,7 +288,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c "vendor/bin/ibexabehat --mode=standard --profile=setup --suite=multirepository -c=behat_ibexa_oss.yaml --tags=@multirepository"
                 docker compose exec -T --user www-data app sh -c "composer run post-install-cmd"
                 # Reinstall database using the new repository
-                docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install"
+                docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
             - if: inputs.test-setup-phase-1 != ''
               name: Run first phase of tests setup
