@@ -1,0 +1,31 @@
+name: Expand Team Reviewers
+
+on:
+  pull_request:
+    types: [review_requested]
+
+env:
+  GITHUB_TOKEN: ${{ secrets.ezrobot_pat }}
+
+jobs:
+  expand-team-reviewers:
+    if: ${{ github.event.requested_team }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Expand team to individual reviewers
+        run: |
+          org="${{ github.repository_owner }}"
+          repo="${{ github.repository }}"
+          team="${{ github.event.requested_team.slug }}"
+          pr="${{ github.event.pull_request.number }}"
+          members=$(gh api /orgs/$org/teams/$team/members \
+                        --paginate \
+                        --jq '.[].login' \
+                        | paste -sd "," -)
+          if [ -n "$members" ]; then
+            gh pr edit "$pr" \
+              --repo "$repo" \
+              --add-reviewer "$members" \
+              --remove-reviewer "$org/$team"
+          fi
