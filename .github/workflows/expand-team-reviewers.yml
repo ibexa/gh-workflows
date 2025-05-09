@@ -1,0 +1,42 @@
+name: Expand Team Reviewers
+
+on:
+  workflow_call:
+    inputs:
+      requested_team:
+        description: 'Slug of the requested team'
+        required: true
+        type: string
+      pull_request_number:
+        description: 'Pull request number'
+        required: true
+        type: number
+      repository:
+        description: 'Repository in org/repo format'
+        required: true
+        type: string
+
+env:
+  GITHUB_TOKEN: ${{ secrets.ezrobot_pat }}
+
+jobs:
+  expand-team-reviewers:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Expand team to individual reviewers
+        run: |
+          org="${{ github.repository_owner }}"
+          repo="${{ inputs.repository }}"
+          team="${{ inputs.requested_team }}"
+          pr="${{ inputs.pull_request_number }}"
+          members=$(gh api /orgs/$org/teams/$team/members \
+                        --paginate \
+                        --jq '.[].login' \
+                        | paste -sd "," -)
+          if [ -n "$members" ]; then
+            gh pr edit "$pr" \
+              --repo "$repo" \
+              --add-reviewer "$members" \
+              --remove-reviewer "$org/$team"
+          fi
