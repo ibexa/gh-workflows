@@ -92,7 +92,7 @@ on:
 env:
     APP_ENV: behat
     APP_DEBUG: 1
-    APP_SECRET: '$ecretf0rt3st'
+    APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
     PHP_INI_ENV_memory_limit: 512M
     COMPOSER_CACHE_DIR: ~/.composer/cache
 
