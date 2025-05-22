@@ -34,7 +34,7 @@ on:
                 required: false
                 type: boolean
             php-image:
-                default: "ghcr.io/ibexa/docker/php:8.3-node18"
+                default: "ghcr.io/ibexa/docker/php:8.3-node22"
                 description: "The PHP image to use"
                 required: false
                 type: string
