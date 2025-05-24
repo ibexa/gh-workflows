@@ -313,9 +313,7 @@ jobs:
             - name: Run tests
               run: |
                   cd ${HOME}/build/project
-                  docker compose --env-file=.env exec -T --user www-data app sh -c "PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT} vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }} --process=1"
-              env:
-                PHP_MEMORY_LIMIT: ${{ inputs.php-memory-limit }}
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }} --process=1 --memory-limit=${{ inputs.php-memory-limit }}"
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
