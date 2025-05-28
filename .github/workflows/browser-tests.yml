@@ -291,33 +291,27 @@ jobs:
                 # Reinstall database using the new repository
                 docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
-            - if: inputs.test-setup-phase-1 != '' && contains(steps.project-version.outputs.version, '5.0.x-dev')
-              name: Run first phase of tests setup
-              run: |
-                  cd ${HOME}/build/project
-                  docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
-                  docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
-
-            - if: inputs.test-setup-phase-1 != '' && !contains(steps.project-version.outputs.version, '5.0.x-dev')
+            - if: inputs.test-setup-phase-1 != ''
               name: Run first phase of tests setup
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+                if [[ "${{ steps.project-version.outputs.version }}" == *'5.0.x-dev'* ]]; then
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
+                else
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+                fi
 
-            - if: inputs.test-setup-phase-2 != '' && contains(steps.project-version.outputs.version, '5.0.x-dev')
+            - if: inputs.test-setup-phase-2 != ''
               name: Run second phase of tests setup
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
-
-            - if: inputs.test-setup-phase-2 != '' && !contains(steps.project-version.outputs.version, '5.0.x-dev')
-              name: Run second phase of tests setup
-              run: |
-                  cd ${HOME}/build/project
-                  docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
+                if [[ "${{ steps.project-version.outputs.version }}" == *'5.0.x-dev'* ]]; then
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
+                else
                   docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+                fi
 
             - name: Run tests
               run: |
