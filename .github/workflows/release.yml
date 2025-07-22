@@ -158,8 +158,12 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add "Changelog-${BUILD_TAG}.md"
-          git commit -m "Add changelog for ${BUILD_TAG}"
-          git push
+          if ! git diff --cached --quiet; then
+            git commit -m "Add changelog for ${BUILD_TAG}"
+            git push
+          else
+            echo "No changes to commit for ${BUILD_TAG}"
+          fi
         env:
           GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
           CHANGELOG: ${{ env.CHANGELOG_OUTPUT }}
