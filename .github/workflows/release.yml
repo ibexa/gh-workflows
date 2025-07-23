@@ -143,18 +143,42 @@ jobs:
           echo "CHANGELOG_OUTPUT<<EOF" >> $GITHUB_ENV
           echo "$(cat generator_output)" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-      - name: Create Release
-        id: create_release
-        uses: zendesk/action-gh-release@v2
-        with:
-          tag_name: ${{ env.BUILD_TAG }}
-          body: |
-            ${{ env.CHANGELOG_OUTPUT }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Archive markdown
         uses: actions/upload-artifact@v4
         with:
           name: changelogs
           path: generator_output
+
+      - name: Check out wiki
+        uses: actions/checkout@v4
+        with:
+          repository: '${{ github.repository }}.wiki'
+          path: 'wiki'
+
+      - name: Push changelog to wiki
+        working-directory: ./wiki
+        run: |
+          echo "$CHANGELOG" > "Changelog-${BUILD_TAG}.md"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add "Changelog-${BUILD_TAG}.md"
+          if ! git diff --cached --quiet; then
+            git commit -m "Add changelog for ${BUILD_TAG}"
+            git push
+          else
+            echo "No changes to commit for ${BUILD_TAG}"
+          fi
+        env:
+          CHANGELOG: ${{ env.CHANGELOG_OUTPUT }}
+          BUILD_TAG: ${{ env.BUILD_TAG }}
+
+      - name: Create Release
+        id: create_release
+        uses: zendesk/action-gh-release@v2
+        with:
+          tag_name: ${{ env.BUILD_TAG }}
+          body: |
+            The full changelog for this release is available at: https://github.com/${{ github.repository }}/wiki/Changelog-${{ env.BUILD_TAG }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
