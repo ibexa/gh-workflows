@@ -150,10 +150,15 @@ jobs:
           name: changelogs
           path: generator_output
 
+      - name: Check out wiki
+        uses: actions/checkout@v4
+        with:
+          repository: '${{ github.repository }}.wiki.git'
+          path: 'wiki'
+
       - name: Push changelog to wiki
+        working-directory: ./wiki
         run: |
-          git clone "https://$GITHUB_TOKEN@github.com/${{ github.repository }}.wiki.git" wiki
-          cd wiki
           echo "$CHANGELOG" > "Changelog-${BUILD_TAG}.md"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
