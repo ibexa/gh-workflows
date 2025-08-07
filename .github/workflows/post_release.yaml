@@ -2,6 +2,10 @@ name: Post release
 
 on:
   workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
 
 jobs:
   trigger-archive-maker:
@@ -19,7 +23,7 @@ jobs:
       - name: Extract tag name
         id: tag
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="${{ inputs.tag }}"
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
