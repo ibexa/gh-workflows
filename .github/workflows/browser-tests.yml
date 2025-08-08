@@ -249,7 +249,7 @@ jobs:
                 docker compose --env-file=.env exec -T app sh -c "composer recipes:install ibexa/compatibility-layer --force"
                 docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
 
-            - if: inputs.multirepository && contains(inputs.setup, 'solr.yml')
+            - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with Solr
               run: |
                 cd ${HOME}/build/project
@@ -285,7 +285,7 @@ jobs:
                 # Reinstall database using the new repository
                 docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
-            - if: inputs.multirepository && !contains(inputs.setup, 'elastic.yml') && !contains(inputs.setup, 'solr.yml')
+            - if: inputs.multirepository && !contains(inputs.setup, 'elastic.yml') && !contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with LSE
               run: |
                 cd ${HOME}/build/project
