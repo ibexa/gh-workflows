@@ -337,6 +337,15 @@ jobs:
                         --process=1 \
                         --format=html"
 
+            - name: Upload Behat artifacts
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                name: behat-artifacts
+                path: |
+                    ${HOME}/build/project/behat-output/
+                    ${HOME}/build/project/behat-report/
+
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
               run: |
