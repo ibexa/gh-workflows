@@ -325,10 +325,27 @@ jobs:
                   docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
                 fi
 
-            - name: Run tests
-              run: |
-                  cd ${HOME}/build/project
-                  docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }} --process=1"
+            -   name: Run tests
+                run: |
+                    cd ${HOME}/build/project
+                    mkdir -p ${{ github.workspace }}/behat-output
+                    mkdir -p ${{ github.workspace }}/behat-report
+                    docker compose --env-file=.env exec -T --user www-data app sh -c \
+                      "vendor/bin/ibexabehat \
+                        --group-count=${{ needs.setup-jobs.outputs.job-count }} \
+                        --group-offset=${{ matrix.offset }} \
+                        ${{ inputs.test-suite }} \
+                        --process=1 \
+                        --format=html"
+
+            - name: Upload Behat artifacts
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                name: behat-artifacts
+                path: |
+                    ${HOME}/build/project/behat-output/
+                    ${HOME}/build/project/behat-report/
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
