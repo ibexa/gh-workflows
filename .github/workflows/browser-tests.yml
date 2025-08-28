@@ -328,7 +328,7 @@ jobs:
             -   name: Run tests
                 run: |
                     cd ${HOME}/build/project
-                    mkdir -p tmp/behat-output tmp/behat-report
+                    mkdir -p behat-output behat-report
                     docker compose --env-file=.env exec -T --user www-data app sh -c \
                       "vendor/bin/ibexabehat \
                         --group-count=${{ needs.setup-jobs.outputs.job-count }} \
