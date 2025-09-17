@@ -1,0 +1,17 @@
+name: "Install PHP Dependencies with Composer using optionally dependencies.json"
+
+runs:
+    using: "composite"
+    steps:
+        - name: 'Process dependencies.json and update composer.json'
+          shell: bash
+          run: |
+            if [[ -f dependencies.json ]]
+            then
+              ./.github/bin/composer-replace-dependencies.bash dependencies.json
+            fi
+
+        - uses: ramsey/composer-install@v3
+          with:
+            dependency-versions: highest
+
