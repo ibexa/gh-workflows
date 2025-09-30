@@ -185,8 +185,7 @@ jobs:
                   restore-keys: |
                     ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}
 
-            - if: env.AUTOMATION_CLIENT_SECRET != ''
-              name: Generate token
+            - name: Generate token
               id: generate_token
               uses: actions/create-github-app-token@v2
               with:
