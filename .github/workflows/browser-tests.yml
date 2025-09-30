@@ -189,9 +189,9 @@ jobs:
               id: generate_token
               uses: actions/create-github-app-token@v2
               with:
-                app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
-                private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
-                owner: ${{ github.repository_owner }}
+                  app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+                  owner: ${{ github.repository_owner }}
 
             - if: env.SATIS_NETWORK_KEY != ''
               name: Add composer keys for private packagist
