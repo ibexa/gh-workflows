@@ -70,6 +70,8 @@ on:
                 required: false
             SATIS_NETWORK_TOKEN:
                 required: false
+            TRAVIS_GITHUB_TOKEN:
+                required: false
             AUTOMATION_CLIENT_ID:
                 required: false
             AUTOMATION_CLIENT_INSTALLATION:
