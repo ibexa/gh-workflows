@@ -7,7 +7,9 @@ on:
                 required: false
             SATIS_NETWORK_TOKEN:
                 required: false
-            TRAVIS_GITHUB_TOKEN:
+            AUTOMATION_CLIENT_ID:
+                required: false
+            AUTOMATION_CLIENT_SECRET:
                 required: false
 jobs:
     rector:
@@ -21,15 +23,28 @@ jobs:
               with:
                   php-version: ${{ matrix.php }}
 
+            - name: Generate token
+              id: generate_token
+              uses: actions/create-github-app-token@v2
+              with:
+                  app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+                  owner: ${{ github.repository_owner }}
+
+            - if: steps.generate_token.outputs.token != ''
+              name: Add composer key for GitHub App
+              run: |
+                  composer config github-oauth.github.com $GITHUB_TOKEN
+              env:
+                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
             - if: env.SATIS_NETWORK_KEY != ''
               name: 'Add composer keys for private packagist'
               run: |
                   composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
-                  composer config github-oauth.github.com $TRAVIS_GITHUB_TOKEN
               env:
                   SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
-                  TRAVIS_GITHUB_TOKEN: ${{ secrets.TRAVIS_GITHUB_TOKEN }}
 
             - name: 'Install Composer dependencies'
               uses: ramsey/composer-install@v3
