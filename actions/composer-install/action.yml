@@ -17,6 +17,10 @@ inputs:
     satis-network-token:
         description: 'Satis Network Token'
         required: false
+    php-extensions:
+        description: 'Comma-separated list of PHP extensions to install'
+        required: false
+        default: 'pdo_sqlite, gd'
 
 runs:
     using: "composite"
@@ -33,7 +37,7 @@ runs:
             with:
                 php-version: ${{ matrix.php }}
                 coverage: none
-                extensions: 'pdo_sqlite, gd'
+                extensions: ${{ inputs.php-extensions }}
                 tools: cs2pr
 
         -   if: ${{ inputs.satis-network-key != '' && inputs.satis-network-token != '' }}
