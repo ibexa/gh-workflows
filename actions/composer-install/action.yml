@@ -1,0 +1,69 @@
+name: "Configure tokens for private packages and install PHP Dependencies with Composer using optionally dependencies.json"
+author: 'Ibexa AS'
+description: >-
+    Configures GitHub App tokens and installs PHP dependencies using Composer. 
+    If a dependencies.json file is present, it updates composer.json accordingly before installation.
+
+inputs:
+    gh-client-id:
+        description: 'GitHub App ID'
+        required: true
+    gh-client-secret:
+        description: 'GitHub App ID'
+        required: true
+    satis-network-key:
+        description: 'Satis Network Key'
+        required: false
+    satis-network-token:
+        description: 'Satis Network Token'
+        required: false
+
+runs:
+    using: "composite"
+    steps:
+        -   uses: actions/create-github-app-token@v2
+            id: generate_token
+            with:
+                app-id: ${{ inputs.gh-client-id }}
+                private-key: ${{ inputs.gh-client-secret }}
+                owner: ${{ github.repository_owner }}
+
+        -   name: Setup PHP Action
+            uses: shivammathur/setup-php@v2
+            with:
+                php-version: ${{ matrix.php }}
+                coverage: none
+                extensions: 'pdo_sqlite, gd'
+                tools: cs2pr
+
+        -   name: Add composer keys for private packagist
+            shell: bash
+            run: composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+            env:
+                SATIS_NETWORK_KEY: ${{ inputs.satis-network-key }}
+                SATIS_NETWORK_TOKEN: ${{ inputs.satis-network-token }}
+
+        -   if: steps.generate_token.outputs.token != ''
+            name: Add composer key for GitHub App
+            shell: bash
+            run: composer config github-oauth.github.com $GITHUB_TOKEN
+            env:
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+        -   name: Set GitHub Path
+            run: echo "$GITHUB_ACTION_PATH" >> $GITHUB_PATH
+            shell: bash
+            env:
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+
+        -   name: 'Process dependencies.json and update composer.json'
+            shell: bash
+            run: |
+                if [[ -f dependencies.json ]]
+                then
+                  composer-replace-dependencies.bash dependencies.json
+                fi
+
+        -   uses: ramsey/composer-install@v3
+            with:
+                dependency-versions: highest
