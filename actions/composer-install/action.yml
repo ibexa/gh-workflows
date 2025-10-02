@@ -36,7 +36,8 @@ runs:
                 extensions: 'pdo_sqlite, gd'
                 tools: cs2pr
 
-        -   name: Add composer keys for private packagist
+        -   if: ${{ inputs.satis-network-key != '' && inputs.satis-network-token != '' }}
+            name: Add composer keys for private packagist
             shell: bash
             run: composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
             env:
