@@ -14,11 +14,11 @@ while IFS= read -r package; do
     if jq -e ".require | has(\"$name\")" "$composer_file" >/dev/null
     then
         composer require --no-update "$name":"$requirement"
-        echo "Updated '$name' package requirement to '$requirement'"
+        echo "> Updated '$name' package requirement to '$requirement'"
     elif jq -e ".\"require-dev\" | has(\"$name\")" "$composer_file" >/dev/null
     then
         composer require --dev --no-update "$name":"$requirement"
-        echo "Updated '$name' dev package requirement to '$requirement'"
+        echo "> Updated '$name' dev package requirement to '$requirement'"
     else
         # Skip further processing for a dependency which is not a part of currently processed composer.json
         continue
@@ -30,3 +30,6 @@ while IFS= read -r package; do
         composer config repositories."$(uuidgen)" vcs "$repository_url"
     fi
 done < <(jq -c '.packages[]' "$dependencies_json")
+
+echo "> Display updated composer.json for debugging"
+cat "$composer_file"
