@@ -63,31 +63,6 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
-        secrets:
-            SLACK_WEBHOOK_URL:
-                required: true
-            SATIS_NETWORK_KEY:
-                required: false
-            SATIS_NETWORK_TOKEN:
-                required: false
-            TRAVIS_GITHUB_TOKEN:
-                required: false
-            AUTOMATION_CLIENT_ID:
-                required: false
-            AUTOMATION_CLIENT_INSTALLATION:
-                required: false
-            AUTOMATION_CLIENT_SECRET:
-                required: false
-            PERCY_TOKEN:
-                required: false
-            CLOUDINARY_URL:
-                required: false
-            LAMBDATEST_PROJECT_TOKEN:
-                required: false
-            LAMBDATEST_USERNAME:
-                required: false
-            LAMBDATEST_ACCESS_KEY:
-                required: false
 
 env:
     APP_ENV: behat
@@ -202,6 +177,19 @@ jobs:
               env:
                   SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
+
+            - name: Setup SSH key for 3.3
+              if: ${{ contains(steps.project-version.outputs.version, '3.3') }}
+              run: |
+                  set -eu
+                  mkdir -p ~/.ssh && chmod 700 ~/.ssh
+                  printf '%s\n' "${{ secrets.EZROBOT_SSH }}" > ~/.ssh/ezrobot
+                  chmod 600 ~/.ssh/ezrobot
+                  # known_hosts for github.com
+                  ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+                  eval "$(ssh-agent -s)"
+                  ssh-add ~/.ssh/ezrobot
+                  echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
 
             - name: Add composer key for GitHub App
               if: ${{ steps.generate_token.outputs.token != '' }}
