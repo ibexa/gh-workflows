@@ -190,6 +190,7 @@ jobs:
                   eval "$(ssh-agent -s)"
                   ssh-add ~/.ssh/ezrobot
                   echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+                  composer config --global github-protocols ssh https
 
             - name: Add composer key for GitHub App
               if: ${{ steps.generate_token.outputs.token != '' }}
