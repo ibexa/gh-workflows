@@ -190,11 +190,10 @@ jobs:
             - name: Generate token
               id: generate_token
               uses: actions/create-github-app-token@v2
-              if: ${{ !contains(steps.project-version.outputs.version, '3.3') }}
               with:
                   app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
                   private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
-                  owner: ${{ github.repository_owner }}
+                  owner: ${{ !contains(steps.project-version.outputs.version, '3.3') && 'ibexa' || 'ezsystems' }}
 
             - if: env.SATIS_NETWORK_KEY != ''
               name: Add composer keys for private packagist
@@ -205,19 +204,11 @@ jobs:
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
 
             - name: Add composer key for GitHub App
-              if: ${{ !contains(steps.project-version.outputs.version, '3.3') && steps.generate_token.outputs.token != '' }}
+              if: ${{ steps.generate_token.outputs.token != '' }}
               run: |
                   composer config github-oauth.github.com $GITHUB_TOKEN
               env:
                   GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
-
-            # For 3.3 versions
-            - name: Add composer key for GitHub App (3.3)
-              if: ${{ contains(steps.project-version.outputs.version, '3.3') }}
-              run: |
-                  composer config github-oauth.github.com $GITHUB_TOKEN
-              env:
-                  GITHUB_TOKEN: ${{ secrets.TRAVIS_GITHUB_TOKEN }}
 
             - if: startsWith(steps.project-version.outputs.version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
