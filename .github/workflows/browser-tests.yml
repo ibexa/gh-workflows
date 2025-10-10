@@ -178,28 +178,12 @@ jobs:
                   SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
 
-            - name: Setup SSH key for 3.3
-              if: ${{ contains(steps.project-version.outputs.version, '3.3') }}
-              run: |
-                  set -eu
-                  mkdir -p ~/.ssh && chmod 700 ~/.ssh
-                  printf '%s\n' "${{ secrets.EZROBOT_SSH }}" > ~/.ssh/ezrobot
-                  chmod 600 ~/.ssh/ezrobot
-                  # known_hosts for github.com
-                  ssh-keyscan -H github.com >> ~/.ssh/known_hosts
-                  eval "$(ssh-agent -s)"
-                  ssh-add ~/.ssh/ezrobot
-                  echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
-                  composer config --global github-protocols ssh https
-                  git config --global url."git@github.com:".insteadOf "https://github.com/"
-                  git config --global url."git@github.com:".insteadOf "http://github.com/"
-
             - name: Add composer key for GitHub App
               if: ${{ steps.generate_token.outputs.token != '' }}
               run: |
                   composer config github-oauth.github.com $GITHUB_TOKEN
               env:
-                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+                  GITHUB_TOKEN: ${{ !contains(steps.project-version.outputs.version, '3.3') && steps.generate_token.outputs.token || secrets.EZROBOT_33 }}
 
             - if: startsWith(steps.project-version.outputs.version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
