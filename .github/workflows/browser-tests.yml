@@ -63,31 +63,6 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
-        secrets:
-            SLACK_WEBHOOK_URL:
-                required: true
-            SATIS_NETWORK_KEY:
-                required: false
-            SATIS_NETWORK_TOKEN:
-                required: false
-            TRAVIS_GITHUB_TOKEN:
-                required: false
-            AUTOMATION_CLIENT_ID:
-                required: false
-            AUTOMATION_CLIENT_INSTALLATION:
-                required: false
-            AUTOMATION_CLIENT_SECRET:
-                required: false
-            PERCY_TOKEN:
-                required: false
-            CLOUDINARY_URL:
-                required: false
-            LAMBDATEST_PROJECT_TOKEN:
-                required: false
-            LAMBDATEST_USERNAME:
-                required: false
-            LAMBDATEST_ACCESS_KEY:
-                required: false
 
 env:
     APP_ENV: behat
@@ -193,7 +168,7 @@ jobs:
               with:
                   app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
                   private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
-                  owner: ${{ github.repository_owner }}
+                  owner: ${{ !contains(steps.project-version.outputs.version, '3.3') && 'ibexa' || 'ezsystems' }}
 
             - if: env.SATIS_NETWORK_KEY != ''
               name: Add composer keys for private packagist
@@ -203,12 +178,12 @@ jobs:
                   SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
 
-            - if: steps.generate_token.outputs.token != ''
-              name: Add composer key for GitHub App
+            - name: Add composer key for GitHub App
+              if: ${{ steps.generate_token.outputs.token != '' }}
               run: |
                   composer config github-oauth.github.com $GITHUB_TOKEN
               env:
-                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+                  GITHUB_TOKEN: ${{ !contains(steps.project-version.outputs.version, '3.3') && steps.generate_token.outputs.token || secrets.EZROBOT_33 }}
 
             - if: startsWith(steps.project-version.outputs.version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
