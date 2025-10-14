@@ -11,6 +11,8 @@ on:
         required: true
       JIRA_TOKEN:
         required: true
+      EZROBOT_33:
+        required: false
 
 jobs:
   provide_changed_packages:
@@ -120,7 +122,7 @@ jobs:
       - name: Run generator in a loop
         id: generator
         env:
-          INPUT_GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+          INPUT_GITHUB_TOKEN: ${{ contains(env.BUILD_TAG, '3.3') && secrets.EZROBOT_33 || steps.generate_token.outputs.token }}
           INPUT_JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
         run: |
           cat > input.json <<'EOF'
