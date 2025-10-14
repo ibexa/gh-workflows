@@ -39,5 +39,6 @@ runs:
                 php-extensions: ${{ inputs.php-extensions }}
 
         -   uses: ramsey/composer-install@v3
+            name: Install Composer dependencies
             with:
                 dependency-versions: ${{ inputs.dependency-versions }}
