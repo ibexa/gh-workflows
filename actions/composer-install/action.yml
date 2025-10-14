@@ -29,7 +29,8 @@ inputs:
 runs:
     using: "composite"
     steps:
-        -   uses: ibexa/gh-workflows/actions/prepare-composer@extract-prepare-composer-action
+        -   uses: ibexa/gh-workflows/actions/prepare-composer@main
+            name: Prepare Composer
             with:
                 gh-client-id: ${{ inputs.gh-client-id }}
                 gh-client-secret: ${{ inputs.gh-client-secret }}
