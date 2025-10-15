@@ -10,7 +10,7 @@ on:
             artifact-path:
                 required: false
                 type: string
-                default: 'build/project/behat-output/*.png'
+                default: 'var/www/behat-output/*.png'
             retention-days:
                 required: false
                 type: number
