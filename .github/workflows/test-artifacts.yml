@@ -22,8 +22,8 @@ jobs:
         steps:
             - name: List screenshot files
               run: |
-                ls -l build/project/behat-output/
-                ls -l var/www/behat-output/
+                ls -l build/project/behat-output/ || true
+                ls -l var/www/behat-output/ || true
             - name: Upload screenshots from failed tests
               uses: actions/upload-artifact@v4
               with:
