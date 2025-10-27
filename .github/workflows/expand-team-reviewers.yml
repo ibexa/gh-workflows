@@ -15,15 +15,25 @@ on:
         description: 'Repository in org/repo format'
         required: true
         type: string
-
-env:
-  GITHUB_TOKEN: ${{ secrets.ezrobot_pat }}
+    secrets:
+      AUTOMATION_CLIENT_ID:
+        required: true
+      AUTOMATION_CLIENT_SECRET:
+        required: true
 
 jobs:
   expand-team-reviewers:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generate GitHub App Token
+        uses: actions/create-github-app-token@v2
+        id: generate_token
+        with:
+          app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+          owner: ${{ github.repository_owner }}
+
       - name: Expand team to individual reviewers
         run: |
           org="${{ github.repository_owner }}"
@@ -40,3 +50,5 @@ jobs:
               --add-reviewer "$members" \
               --remove-reviewer "$org/$team"
           fi
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
