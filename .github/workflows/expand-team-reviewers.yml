@@ -47,8 +47,8 @@ jobs:
           if [ -n "$members" ]; then
             gh pr edit "$pr" \
               --repo "$repo" \
-              --add-reviewer "$members" \
-              --remove-reviewer "$org/$team"
+              --remove-reviewer "$org/$team" \
+              --add-reviewer "$members"
           fi
         env:
           GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
