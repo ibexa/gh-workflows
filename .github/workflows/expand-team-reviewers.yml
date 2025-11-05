@@ -16,15 +16,23 @@ on:
         required: true
         type: string
 
-env:
-  GITHUB_TOKEN: ${{ secrets.ezrobot_pat }}
-
 jobs:
   expand-team-reviewers:
     runs-on: ubuntu-latest
 
     steps:
+
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v2
+        with:
+            app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+            private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+            owner: 'ibexa'
+
       - name: Expand team to individual reviewers
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
           org="${{ github.repository_owner }}"
           repo="${{ inputs.repository }}"
