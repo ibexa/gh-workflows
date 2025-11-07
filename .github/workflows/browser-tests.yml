@@ -63,6 +63,31 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
+        secrets:
+            SLACK_WEBHOOK_URL:
+                required: false
+            SATIS_NETWORK_KEY:
+                required: false
+            SATIS_NETWORK_TOKEN:
+                required: false
+            AUTOMATION_CLIENT_ID:
+                required: false
+            AUTOMATION_CLIENT_SECRET:
+                required: false
+            AUTOMATION_CLIENT_INSTALLATION:
+                required: false
+            EZROBOT_33:
+                required: false
+            PERCY_TOKEN:
+                required: false
+            CLOUDINARY_URL:
+                required: false
+            LAMBDATEST_PROJECT_TOKEN:
+                required: false
+            LAMBDATEST_USERNAME:
+                required: false
+            LAMBDATEST_ACCESS_KEY:
+                required: false
 
 env:
     APP_ENV: behat
