@@ -1,8 +1,8 @@
-name: "Configure tokens for private packages and install PHP Dependencies with Composer using optionally dependencies.json"
+name: "Prepare composer using ./ibexa/gh-workflows/actions/prepare-composer action and execute composer install"
 author: 'Ibexa AS'
 description: >-
-    Configures GitHub App tokens and installs PHP dependencies using Composer. 
-    If a dependencies.json file is present, it updates composer.json accordingly before installation.
+    Runs ./ibexa/gh-workflows/actions/prepare-composer action with the same input
+    and then runs ramsey/composer-install action
 
 inputs:
     gh-client-id:
@@ -21,50 +21,24 @@ inputs:
         description: 'Comma-separated list of PHP extensions to install'
         required: false
         default: 'pdo_sqlite, gd'
+    dependency-versions:
+        description: 'Dependency version resolution strategy (lowest, highest, or locked)'
+        required: false
+        default: 'highest'
 
 runs:
     using: "composite"
     steps:
-        -   uses: actions/create-github-app-token@v2
-            id: generate_token
+        -   uses: ibexa/gh-workflows/actions/prepare-composer@extract-prepare-composer-action
+            name: Prepare Composer
             with:
-                app-id: ${{ inputs.gh-client-id }}
-                private-key: ${{ inputs.gh-client-secret }}
-                owner: ${{ github.repository_owner }}
-
-        -   name: Setup PHP Action
-            uses: shivammathur/setup-php@v2
-            with:
-                php-version: ${{ matrix.php }}
-                coverage: none
-                extensions: ${{ inputs.php-extensions }}
-                tools: cs2pr
-
-        -   if: ${{ inputs.satis-network-key != '' && inputs.satis-network-token != '' }}
-            name: Add composer keys for private packagist
-            shell: bash
-            run: composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
-            env:
-                SATIS_NETWORK_KEY: ${{ inputs.satis-network-key }}
-                SATIS_NETWORK_TOKEN: ${{ inputs.satis-network-token }}
-
-        -   if: steps.generate_token.outputs.token != ''
-            name: Add composer key for GitHub App
-            shell: bash
-            run: composer config github-oauth.github.com $GITHUB_TOKEN
-            env:
-                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
-
-        -   name: 'Process dependencies.json and update composer.json'
-            shell: bash
-            run: |
-                if [[ -f dependencies.json ]]
-                then
-                  "${GITHUB_ACTION_PATH}/composer-replace-dependencies.bash" dependencies.json
-                fi
-            env:
-                GITHUB_ACTION_PATH: ${{ github.action_path }}
+                gh-client-id: ${{ inputs.gh-client-id }}
+                gh-client-secret: ${{ inputs.gh-client-secret }}
+                satis-network-key: ${{ inputs.satis-network-key }}
+                satis-network-token: ${{ inputs.satis-network-token }}
+                php-extensions: ${{ inputs.php-extensions }}
 
         -   uses: ramsey/composer-install@v3
+            name: Install Composer dependencies
             with:
-                dependency-versions: highest
+                dependency-versions: ${{ inputs.dependency-versions }}

@@ -1,0 +1,66 @@
+name: "Configure PHP, tokens for private packages, and GitHub OAuth token. Optionally use dependencies.json for dev versions of packages"
+author: 'Ibexa AS'
+description: >-
+    Configures Composer GitHub App tokens and Satis network keys.
+    If a dependencies.json file is present, it updates composer.json accordingly.
+
+inputs:
+    gh-client-id:
+        description: 'GitHub App ID'
+        required: true
+    gh-client-secret:
+        description: 'GitHub App ID'
+        required: true
+    satis-network-key:
+        description: 'Satis Network Key'
+        required: false
+    satis-network-token:
+        description: 'Satis Network Token'
+        required: false
+    php-extensions:
+        description: 'Comma-separated list of PHP extensions to install'
+        required: false
+        default: 'pdo_sqlite, gd'
+
+runs:
+    using: "composite"
+    steps:
+        -   uses: actions/create-github-app-token@v2
+            id: generate_token
+            with:
+                app-id: ${{ inputs.gh-client-id }}
+                private-key: ${{ inputs.gh-client-secret }}
+                owner: ${{ github.repository_owner }}
+
+        -   name: Setup PHP Action
+            uses: shivammathur/setup-php@v2
+            with:
+                php-version: ${{ matrix.php }}
+                coverage: none
+                extensions: ${{ inputs.php-extensions }}
+                tools: cs2pr
+
+        -   if: ${{ inputs.satis-network-key != '' && inputs.satis-network-token != '' }}
+            name: Add composer keys for private packagist
+            shell: bash
+            run: composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+            env:
+                SATIS_NETWORK_KEY: ${{ inputs.satis-network-key }}
+                SATIS_NETWORK_TOKEN: ${{ inputs.satis-network-token }}
+
+        -   if: steps.generate_token.outputs.token != ''
+            name: Add composer key for GitHub App
+            shell: bash
+            run: composer config github-oauth.github.com $GITHUB_TOKEN
+            env:
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+        -   name: 'Process dependencies.json and update composer.json'
+            shell: bash
+            run: |
+                if [[ -f dependencies.json ]]
+                then
+                  "${GITHUB_ACTION_PATH}/composer-replace-dependencies.bash" dependencies.json
+                fi
+            env:
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
