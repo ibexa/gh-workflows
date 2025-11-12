@@ -86,7 +86,8 @@ jobs:
             exit 1
           fi
 
-          RUNS=$(echo "$RAW_RUNS" | jq -c '.workflow_runs[] | select(.created_at >= "'${SINCE}'T00:00:00Z" and .created_at <= "'${UNTIL}'T23:59:59Z")')
+          RUNS=$(echo "$RAW_RUNS" | jq -c --arg SINCE "${SINCE}T00:00:00Z" --arg UNTIL "${UNTIL}T23:59:59Z" \
+            '.workflow_runs[] | select(.created_at >= $SINCE and .created_at <= $UNTIL)')
 
           if [ -z "$RUNS" ]; then
             echo "No failed runs found for workflow: Browser Tests on branch $BRANCH in this window" >&2
