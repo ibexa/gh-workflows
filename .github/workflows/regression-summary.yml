@@ -59,7 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          WORKFLOW_ID=$(gh api "/repos/${TARGET_REPO}/actions/workflows" | jq '.workflows[] | select(.name == "${WORKFLOW_NAME}") | .id')
+          WORKFLOW_ID=$(gh api "/repos/${TARGET_REPO}/actions/workflows" | jq ".workflows[] | select(.name == \"${WORKFLOW_NAME}\") | .id")
           if [ -z "$WORKFLOW_ID" ]; then
             echo "Could not find workflow with name: ${WORKFLOW_NAME}" >&2
             exit 1
