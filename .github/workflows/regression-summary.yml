@@ -1,0 +1,86 @@
+name: Scan Branch Regression Errors
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to scan (e.g., feature.ie-branch)'
+        required: true
+        type: string
+      since:
+        description: 'Start date for scan window (YYYY-MM-DD, leave empty for last 30 days)'
+        required: false
+        type: string
+      until:
+        description: 'End date for scan window (YYYY-MM-DD, leave empty for today)'
+        required: false
+        type: string
+
+jobs:
+  scan-failures:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_REPO: "ibexa/commerce"
+    steps:
+      - name: Checkout self
+        uses: actions/checkout@v4
+
+      - name: Set date range for the last 30 days if not specified
+        id: daterange
+        run: |
+          # If since/until not set, use last 30 days -> today
+          if [ -z "${{ github.event.inputs.since }}" ]; then
+            SINCE=$(date -u -d '30 days ago' +%Y-%m-%d)
+          else
+            SINCE="${{ github.event.inputs.since }}"
+          fi
+          if [ -z "${{ github.event.inputs.until }}" ]; then
+            UNTIL=$(date -u +%Y-%m-%d)
+          else
+            UNTIL="${{ github.event.inputs.until }}"
+          fi
+          echo "since=$SINCE" >> $GITHUB_OUTPUT
+          echo "until=$UNTIL" >> $GITHUB_OUTPUT
+
+      - name: Scan failed workflow runs in period for chosen branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.event.inputs.branch }}"
+          SINCE="${{ steps.daterange.outputs.since }}"
+          UNTIL="${{ steps.daterange.outputs.until }}"
+          echo "| Branch | Job Name | Failure Time | Error Description |" > results.md
+          echo "|--------|----------|--------------|-------------------|" >> results.md
+
+          echo "Scanning branch $BRANCH from $SINCE to $UNTIL" >&2
+
+          # Get runs (paginated, only up to 100 runs per API call, modify as needed for deeper history)
+          RUNS=$(gh api "/repos/${TARGET_REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=100" | jq -c '.workflow_runs[] | select(.created_at >= "'${SINCE}'T00:00:00Z" and .created_at <= "'${UNTIL}'T23:59:59Z")')
+          if [ -z "$RUNS" ]; then
+            echo "No failed runs found in this window" >&2
+          else
+            echo "$RUNS" | while read RUN; do
+              RUN_ID=$(echo "$RUN" | jq -r '.id')
+              JOBS=$(gh api "/repos/${TARGET_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" | jq -c '.jobs[] | select(.conclusion=="failure")')
+              for JOB in $JOBS; do
+                JOB_NAME=$(echo "$JOB" | jq -r '.name')
+                FAILURE_TIME=$(echo "$JOB" | jq -r '.completed_at')
+                LOG_URL=$(echo "$JOB" | jq -r '.logs_url')
+                # Download logs and extract error description (first 'error', fallback last 10 lines)
+                gh api "$LOG_URL" > job_log.txt
+                ERROR_DESC=$(grep -i 'error' job_log.txt | head -n 1)
+                if [[ -z "$ERROR_DESC" ]]; then
+                  ERROR_DESC=$(tail -n 10 job_log.txt | tr '\n' ' ')
+                fi
+                # Escape pipes just in case
+                ERROR_DESC=$(echo "$ERROR_DESC" | sed 's/|/\\|/g')
+                echo "| $BRANCH | $JOB_NAME | $FAILURE_TIME | $ERROR_DESC |" >> results.md
+              done
+            done
+          fi
+
+      - name: Output table to summary
+        shell: bash
+        run: |
+          cat results.md >> $GITHUB_STEP_SUMMARY
