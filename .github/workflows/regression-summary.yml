@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TARGET_REPO: "ibexa/commerce"
-      WORKFLOW_NAME: "Browser Tests"
+      WORKFLOW_NAME: "Browser tests"
     steps:
       - name: Checkout self
         uses: actions/checkout@v4
