@@ -15,6 +15,17 @@ on:
         description: 'End date for scan window (YYYY-MM-DD, leave empty for today)'
         required: false
         type: string
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+      since:
+        required: false
+        type: string
+      until:
+        required: false
+        type: string
 
 jobs:
   scan-failures:
