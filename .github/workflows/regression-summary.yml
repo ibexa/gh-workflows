@@ -1,0 +1,116 @@
+name: Scan Branch Regression Errors
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to scan (e.g., feature.ie-branch)'
+        required: true
+        type: string
+      since:
+        description: 'Start date for scan window (YYYY-MM-DD, leave empty for last 30 days)'
+        required: false
+        type: string
+      until:
+        description: 'End date for scan window (YYYY-MM-DD, leave empty for today)'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+      since:
+        required: false
+        type: string
+      until:
+        required: false
+        type: string
+
+jobs:
+  scan-failures:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_REPO: "ibexa/headless"
+      WORKFLOW_NAME: "Browser tests"
+    steps:
+      - name: Checkout self
+        uses: actions/checkout@v4
+
+      - name: Set date range for the last 30 days if not specified
+        id: daterange
+        run: |
+          # If since/until not set, use last 30 days -> today
+          if [ -z "${{ github.event.inputs.since }}" ]; then
+            SINCE=$(date -u -d '30 days ago' +%Y-%m-%d)
+          else
+            SINCE="${{ github.event.inputs.since }}"
+          fi
+          if [ -z "${{ github.event.inputs.until }}" ]; then
+            UNTIL=$(date -u +%Y-%m-%d)
+          else
+            UNTIL="${{ github.event.inputs.until }}"
+          fi
+          echo "since=$SINCE" >> $GITHUB_OUTPUT
+          echo "until=$UNTIL" >> $GITHUB_OUTPUT
+
+      - name: Find workflow ID by name
+        id: workflow_id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WORKFLOW_ID=$(gh api "/repos/${TARGET_REPO}/actions/workflows" | jq ".workflows[] | select(.name == \"${WORKFLOW_NAME}\") | .id")
+          if [ -z "$WORKFLOW_ID" ]; then
+            echo "Could not find workflow with name: ${WORKFLOW_NAME}" >&2
+            exit 1
+          fi
+          echo "id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+
+      - name: Scan failed runs for Browser Tests in period for chosen branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.event.inputs.branch }}"
+          SINCE="${{ steps.daterange.outputs.since }}"
+          UNTIL="${{ steps.daterange.outputs.until }}"
+          WORKFLOW_ID="${{ steps.workflow_id.outputs.id }}"
+          echo "| Branch | Job Name | Failure Time | Error Description |" > results.md
+          echo "|--------|----------|--------------|-------------------|" >> results.md
+
+          echo "Scanning failures for workflow: Browser Tests on branch $BRANCH from $SINCE to $UNTIL" >&2
+
+          RAW_RUNS=$(gh api "/repos/${TARGET_REPO}/actions/workflows/${WORKFLOW_ID}/runs?branch=${BRANCH}&status=failure&per_page=100")
+          if ! echo "$RAW_RUNS" | jq empty 2>/dev/null; then
+            echo "API response is not valid JSON: $RAW_RUNS" >&2
+            exit 1
+          fi
+
+          RUNS=$(echo "$RAW_RUNS" | jq -c --arg SINCE "${SINCE}T00:00:00Z" --arg UNTIL "${UNTIL}T23:59:59Z" \
+            '.workflow_runs[] | select(.created_at >= $SINCE and .created_at <= $UNTIL)')
+
+          if [ -z "$RUNS" ]; then
+            echo "No failed runs found for workflow: Browser Tests on branch $BRANCH in this window" >&2
+          else
+            echo "$RUNS" | while read RUN; do
+              RUN_ID=$(echo "$RUN" | jq -r '.id')
+              JOBS=$(gh api "/repos/${TARGET_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" | jq -c '.jobs[] | select(.conclusion=="failure")')
+              for JOB in $JOBS; do
+                JOB_NAME=$(echo "$JOB" | jq -r '.name')
+                FAILURE_TIME=$(echo "$JOB" | jq -r '.completed_at')
+                LOG_URL=$(echo "$JOB" | jq -r '.logs_url')
+                gh api "$LOG_URL" > job_log.txt
+                ERROR_DESC=$(grep -i 'error' job_log.txt | head -n 1)
+                if [[ -z "$ERROR_DESC" ]]; then
+                  ERROR_DESC=$(tail -n 10 job_log.txt | tr '\n' ' ')
+                fi
+                ERROR_DESC=$(echo "$ERROR_DESC" | sed 's/|/\\|/g')
+                echo "| $BRANCH | $JOB_NAME | $FAILURE_TIME | $ERROR_DESC |" >> results.md
+              done
+            done
+          fi
+
+      - name: Output table to summary
+        shell: bash
+        run: |
+          cat results.md >> $GITHUB_STEP_SUMMARY
