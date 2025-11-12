@@ -66,8 +66,14 @@ jobs:
 
           echo "Scanning branch $BRANCH from $SINCE to $UNTIL" >&2
 
-          # Get runs (paginated, only up to 100 runs per API call, modify as needed for deeper history)
-          RUNS=$(gh api "/repos/${TARGET_REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=100" | jq -c '.workflow_runs[] | select(.created_at >= "'${SINCE}'T00:00:00Z" and .created_at <= "'${UNTIL}'T23:59:59Z")')
+
+          RAW_RUNS=$(gh api "/repos/${TARGET_REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=100")
+          if [ -z "$RAW_RUNS" ]; then
+            echo "No API response or empty response for workflow runs." >&2
+          else
+            RUNS=$(echo "$RAW_RUNS" | jq -c '.workflow_runs[] | select(.created_at >= "'${SINCE}'T00:00:00Z" and .created_at <= "'${UNTIL}'T23:59:59Z")')
+          fi
+
           if [ -z "$RUNS" ]; then
             echo "No failed runs found in this window" >&2
           else
