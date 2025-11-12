@@ -31,7 +31,7 @@ jobs:
   scan-failures:
     runs-on: ubuntu-latest
     env:
-      TARGET_REPO: "ibexa/commerce"
+      TARGET_REPO: "ibexa/headless"
       WORKFLOW_NAME: "Browser tests"
     steps:
       - name: Checkout self
