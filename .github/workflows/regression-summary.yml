@@ -31,7 +31,8 @@ jobs:
   scan-failures:
     runs-on: ubuntu-latest
     env:
-      TARGET_REPO: "ibexa/headless"
+      TARGET_REPO: "ibexa/commerce"
+      WORKFLOW_NAME: "Browser Tests"
     steps:
       - name: Checkout self
         uses: actions/checkout@v4
@@ -53,7 +54,19 @@ jobs:
           echo "since=$SINCE" >> $GITHUB_OUTPUT
           echo "until=$UNTIL" >> $GITHUB_OUTPUT
 
-      - name: Scan failed workflow runs in period for chosen branch
+      - name: Find workflow ID by name
+        id: workflow_id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WORKFLOW_ID=$(gh api "/repos/${TARGET_REPO}/actions/workflows" | jq '.workflows[] | select(.name == "${WORKFLOW_NAME}") | .id')
+          if [ -z "$WORKFLOW_ID" ]; then
+            echo "Could not find workflow with name: ${WORKFLOW_NAME}" >&2
+            exit 1
+          fi
+          echo "id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+
+      - name: Scan failed runs for Browser Tests in period for chosen branch
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -61,21 +74,22 @@ jobs:
           BRANCH="${{ github.event.inputs.branch }}"
           SINCE="${{ steps.daterange.outputs.since }}"
           UNTIL="${{ steps.daterange.outputs.until }}"
+          WORKFLOW_ID="${{ steps.workflow_id.outputs.id }}"
           echo "| Branch | Job Name | Failure Time | Error Description |" > results.md
           echo "|--------|----------|--------------|-------------------|" >> results.md
 
-          echo "Scanning branch $BRANCH from $SINCE to $UNTIL" >&2
+          echo "Scanning failures for workflow: Browser Tests on branch $BRANCH from $SINCE to $UNTIL" >&2
 
-
-          RAW_RUNS=$(gh api "/repos/${TARGET_REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=100")
-          if [ -z "$RAW_RUNS" ]; then
-            echo "No API response or empty response for workflow runs." >&2
-          else
-            RUNS=$(echo "$RAW_RUNS" | jq -c '.workflow_runs[] | select(.created_at >= "'${SINCE}'T00:00:00Z" and .created_at <= "'${UNTIL}'T23:59:59Z")')
+          RAW_RUNS=$(gh api "/repos/${TARGET_REPO}/actions/workflows/${WORKFLOW_ID}/runs?branch=${BRANCH}&status=failure&per_page=100")
+          if ! echo "$RAW_RUNS" | jq empty 2>/dev/null; then
+            echo "API response is not valid JSON: $RAW_RUNS" >&2
+            exit 1
           fi
 
+          RUNS=$(echo "$RAW_RUNS" | jq -c '.workflow_runs[] | select(.created_at >= "'${SINCE}'T00:00:00Z" and .created_at <= "'${UNTIL}'T23:59:59Z")')
+
           if [ -z "$RUNS" ]; then
-            echo "No failed runs found in this window" >&2
+            echo "No failed runs found for workflow: Browser Tests on branch $BRANCH in this window" >&2
           else
             echo "$RUNS" | while read RUN; do
               RUN_ID=$(echo "$RUN" | jq -r '.id')
@@ -84,13 +98,11 @@ jobs:
                 JOB_NAME=$(echo "$JOB" | jq -r '.name')
                 FAILURE_TIME=$(echo "$JOB" | jq -r '.completed_at')
                 LOG_URL=$(echo "$JOB" | jq -r '.logs_url')
-                # Download logs and extract error description (first 'error', fallback last 10 lines)
                 gh api "$LOG_URL" > job_log.txt
                 ERROR_DESC=$(grep -i 'error' job_log.txt | head -n 1)
                 if [[ -z "$ERROR_DESC" ]]; then
                   ERROR_DESC=$(tail -n 10 job_log.txt | tr '\n' ' ')
                 fi
-                # Escape pipes just in case
                 ERROR_DESC=$(echo "$ERROR_DESC" | sed 's/|/\\|/g')
                 echo "| $BRANCH | $JOB_NAME | $FAILURE_TIME | $ERROR_DESC |" >> results.md
               done
