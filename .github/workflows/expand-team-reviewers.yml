@@ -35,20 +35,45 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Expand team to individual reviewers
+        shell: bash
         run: |
           org="${{ github.repository_owner }}"
           repo="${{ inputs.repository }}"
           team="${{ inputs.requested_team }}"
           pr="${{ inputs.pull_request_number }}"
+          pr_author="${{ github.event.pull_request.user.login }}"
+          # Get team members, but filter out a PR author because review cannot be requested from the author
           members=$(gh api /orgs/$org/teams/$team/members \
                         --paginate \
-                        --jq '.[].login' \
-                        | paste -sd "," -)
-          if [ -n "$members" ]; then
+                        --jq '.[].login | select(. != "'"$pr_author"'")' )
+
+          exit_code=$?
+          if [[ $exit_code -ne 0 ]]
+          then
+            echo "Error: Failed to fetch team members"
+            echo "$members" # contains the error message
+            exit $exit_code
+          fi
+
+          if [[ -n "$members" ]]
+          then
+            members_list=$(echo "$members" | paste -sd ",")
+            echo "Requesting review for $repo#$pr from $org/$team members: $members_list"
+
+            gh api \
+                --method DELETE \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                /repos/$repo/pulls/$pr/requested_reviewers --input - <<< '{
+                    "reviewers": [],
+                    "team_reviewers": [
+                        "'"$team"'"
+                    ]
+            }'
+
             gh pr edit "$pr" \
               --repo "$repo" \
-              --remove-reviewer "$org/$team" \
-              --add-reviewer "$members"
+              --add-reviewer "$members_list"
           fi
         env:
           GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
