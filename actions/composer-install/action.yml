@@ -25,7 +25,8 @@ inputs:
 runs:
     using: "composite"
     steps:
-        -   uses: actions/create-github-app-token@v2
+        -   if: ${{ inputs.gh-client-id != '' && inputs.gh-client-secret != '' }}
+            uses: actions/create-github-app-token@v2
             id: generate_token
             with:
                 app-id: ${{ inputs.gh-client-id }}
