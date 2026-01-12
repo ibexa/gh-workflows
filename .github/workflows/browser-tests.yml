@@ -262,7 +262,7 @@ jobs:
                 # Reinstall database using the new repository
                 docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
-            - if: inputs.multirepository && contains(inputs.setup, 'elastic.yml')
+            - if: inputs.multirepository && contains(inputs.setup, 'elastic')
               name: Set up multirepository build with Elastic
               run: |
                 cd ${HOME}/build/project
@@ -280,7 +280,7 @@ jobs:
                 # Reinstall database using the new repository
                 docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
-            - if: inputs.multirepository && !contains(inputs.setup, 'elastic.yml') && !contains(inputs.setup, 'solr8.yml')
+            - if: inputs.multirepository && !contains(inputs.setup, 'elastic') && !contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with LSE
               run: |
                 cd ${HOME}/build/project
