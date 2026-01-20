@@ -188,7 +188,6 @@ jobs:
                     ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}
 
             - name: Generate token
-              if: ${{ secrets.AUTOMATION_CLIENT_ID != '' && secrets.AUTOMATION_CLIENT_SECRET != '' }}
               id: generate_token
               uses: actions/create-github-app-token@v2
               with:
