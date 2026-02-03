@@ -24,7 +24,7 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        uses: ibexa/changelog-generator-action@main
+        uses: ibexa/changelog-generator-action@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           jira_token: ${{ secrets.JIRA_TOKEN }}
