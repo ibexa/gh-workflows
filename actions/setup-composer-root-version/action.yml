@@ -1,0 +1,11 @@
+name: 'Setup COMPOSER_ROOT_VERSION'
+description: 'Sets COMPOSER_ROOT_VERSION environment variable based on branch-alias in composer.json'
+runs:
+    using: "composite"
+    steps:
+        -   shell: bash
+            name: Setting COMPOSER_ROOT_VERSION environment variable
+            run: |
+                COMPOSER_ROOT_VERSION=$(jq -r '.extra | ."branch-alias" | ."dev-main"' < composer.json)
+                echo "Setting COMPOSER_ROOT_VERSION environment variable to "${COMPOSER_ROOT_VERSION}"."
+                echo "COMPOSER_ROOT_VERSION=$COMPOSER_ROOT_VERSION" >> $GITHUB_ENV
