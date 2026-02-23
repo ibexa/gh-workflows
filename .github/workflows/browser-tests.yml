@@ -95,6 +95,7 @@ env:
     APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
     PHP_INI_ENV_memory_limit: 1G
     COMPOSER_CACHE_DIR: ~/.composer/cache
+    SYMFONY_DEPRECATIONS_HELPER: max[self]=0
 
 jobs:
     setup-jobs:
