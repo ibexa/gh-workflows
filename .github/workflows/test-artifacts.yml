@@ -28,7 +28,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact-name }}
-          path: tmp/behat-output
+          path: ${{ inputs.artifact-path }}
           if-no-files-found: ignore
           retention-days: ${{ inputs.retention-days }}
       - name: List all files in workspace
