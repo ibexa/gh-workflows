@@ -21,6 +21,9 @@ inputs:
         description: 'Comma-separated list of PHP extensions to install'
         required: false
         default: 'pdo_sqlite, gd'
+    composer-options:
+        description: 'Additional options to pass to composer'
+        required: false
 
 runs:
     using: "composite"
@@ -69,3 +72,4 @@ runs:
         -   uses: ramsey/composer-install@v3
             with:
                 dependency-versions: highest
+                composer-options: ${{ inputs.composer-options }}
