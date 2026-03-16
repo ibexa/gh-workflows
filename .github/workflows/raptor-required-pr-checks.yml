@@ -1,0 +1,9 @@
+name: Raptor Required PR Checks
+
+on:
+  pull_request: ~
+
+jobs:
+  check-up-to-date:
+    uses: ibexa/gh-workflows/.github/workflows/pr-check.yml@main
+    secrets: inherit
