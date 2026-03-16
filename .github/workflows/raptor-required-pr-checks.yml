@@ -5,5 +5,5 @@ on:
 
 jobs:
   check-up-to-date:
-    uses: ibexa/gh-workflows/.github/workflows/pr-check.yml@main
+    uses: ibexa/gh-workflows/.github/workflows/raptor-pr-checks.yml@main
     secrets: inherit
