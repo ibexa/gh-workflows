@@ -198,7 +198,7 @@ jobs:
             - if: env.SATIS_NETWORK_KEY != ''
               name: Add composer keys for private packagist
               run: |
-                  composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+                  composer config http-basic.satis.services.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
               env:
                   SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
                   SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}

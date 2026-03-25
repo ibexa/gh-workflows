@@ -51,7 +51,7 @@ runs:
         -   if: ${{ inputs.satis-network-key != '' && inputs.satis-network-token != '' }}
             name: Add composer keys for private packagist
             shell: bash
-            run: composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+            run: composer config http-basic.satis.services.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
             env:
                 SATIS_NETWORK_KEY: ${{ inputs.satis-network-key }}
                 SATIS_NETWORK_TOKEN: ${{ inputs.satis-network-token }}
