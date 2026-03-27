@@ -66,7 +66,7 @@ jobs:
         id: changed-files
         shell: bash {0} # Disable fail-fast when no match is found
         run: |
-          matches=$(hub api /repos/${REPO}/pulls/${PR}/files | jq -r '.[].filename | split("/") | .[-1]' | pcregrep -c "$EXTENSION")
+          matches=$(hub api --paginate /repos/${REPO}/pulls/${PR}/files | jq -r '.[].filename | split("/") | .[-1]' | pcregrep -c -- "$EXTENSION")
           if [ "${matches}" -ge 1 ]; then
             output=1
           else
