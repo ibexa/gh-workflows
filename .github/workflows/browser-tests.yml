@@ -299,7 +299,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
             - name: Add ibexa_integrated_help config
-              if: inputs.project-edition != 'oss' || !contains(steps.project-version.outputs.version, '3.3')
+              if: inputs.project-edition != 'oss' && !contains(steps.project-version.outputs.version, '3.3')
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
