@@ -63,6 +63,11 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
+            restore-integrated-help-config:
+                default: false
+                required: false
+                type: boolean
+                description: "Restore ibexa_integrated_help config with help_center enabled and product_tour disabled"
         secrets:
             SLACK_WEBHOOK_URL:
                 required: false
@@ -303,6 +308,12 @@ jobs:
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
+
+            - name: Restore ibexa_integrated_help config
+              if: inputs.restore-integrated-help-config
+              run: |
+                  cd ${HOME}/build/project
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    help_center:\n        enabled: true\n    product_tour:\n        enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
 
             - if: inputs.test-setup-phase-1 != ''
               name: Run first phase of tests setup
