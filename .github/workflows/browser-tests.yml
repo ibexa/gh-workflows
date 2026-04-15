@@ -310,10 +310,11 @@ jobs:
                 docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
 
             - name: Restore ibexa_integrated_help config
-              if: inputs.restore-integrated-help-config
+              if: inputs.restore-integrated-help-config && inputs.project-edition != 'oss' && !contains(steps.project-version.outputs.version, '3.3')
               run: |
                   cd ${HOME}/build/project
                   docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    help_center:\n        enabled: true\n    product_tour:\n        enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console cache:clear"
 
             - if: inputs.test-setup-phase-1 != ''
               name: Run first phase of tests setup
