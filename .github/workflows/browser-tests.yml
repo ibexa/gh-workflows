@@ -304,6 +304,9 @@ jobs:
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
 
+            - name: Debug test-suite input
+              run: echo "test-suite=${{ inputs.test-suite }}"
+
             - name: Restore ibexa_integrated_help config
               if: contains(inputs.test-suite, 'integrated-help') && inputs.project-edition != 'oss' && !contains(steps.project-version.outputs.version, '3.3')
               run: |
