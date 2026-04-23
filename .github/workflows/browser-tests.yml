@@ -241,6 +241,7 @@ jobs:
                 LAMBDATEST_PROJECT_TOKEN: ${{ secrets.LAMBDATEST_PROJECT_TOKEN }}
                 LAMBDATEST_USERNAME: "${{ secrets.LAMBDATEST_USERNAME }}"
                 LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
+                INSTALL_CONNECTOR_QUABLE: ${{ inputs.install-connector-quable }}
 
             - if: inputs.use-compatibility-layer
               name: Set up compatibility-layer
