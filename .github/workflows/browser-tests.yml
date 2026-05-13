@@ -63,6 +63,11 @@ on:
                 description: "Job maximum timeout in minutes"
                 required: false
                 type: number
+            install-connector-quable:
+                default: false
+                required: false
+                type: boolean
+                description: "Install ibexa/connector-quable"                
         secrets:
             SLACK_WEBHOOK_URL:
                 required: false
@@ -222,6 +227,7 @@ jobs:
                 LAMBDATEST_PROJECT_TOKEN: ${{ secrets.LAMBDATEST_PROJECT_TOKEN }}
                 LAMBDATEST_USERNAME: "${{ secrets.LAMBDATEST_USERNAME }}"
                 LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
+                INSTALL_CONNECTOR_QUABLE: ${{ inputs.install-connector-quable }}
 
             - if: startsWith(steps.project-version.outputs.version, 'v')
               name: Set up whole project using a stable release
@@ -235,6 +241,7 @@ jobs:
                 LAMBDATEST_PROJECT_TOKEN: ${{ secrets.LAMBDATEST_PROJECT_TOKEN }}
                 LAMBDATEST_USERNAME: "${{ secrets.LAMBDATEST_USERNAME }}"
                 LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
+                INSTALL_CONNECTOR_QUABLE: ${{ inputs.install-connector-quable }}
 
             - if: inputs.use-compatibility-layer
               name: Set up compatibility-layer
