@@ -73,7 +73,7 @@ runs:
             env:
                 GITHUB_ACTION_PATH: ${{ github.action_path }}
 
-        -   uses: ramsey/composer-install@v3
+        -   uses: ramsey/composer-install@v4
             with:
                 dependency-versions: highest
                 composer-options: ${{ inputs.composer-options }}
