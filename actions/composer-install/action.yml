@@ -75,7 +75,7 @@ runs:
                 GITHUB_ACTION_PATH: ${{ github.action_path }}
 
         -   name: 'Ignore known unsolvable advisories'
-            uses: ibexa/gh-workflows/actions/composer-audit-ignore@main
+            uses: ibexa/gh-workflows/actions/composer-audit-ignore@ibx-11717-composer-audit-ignore-action
             with:
                 php-version: ${{ steps.setup_php.outputs.php-version }}
 
