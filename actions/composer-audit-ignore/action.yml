@@ -1,0 +1,26 @@
+name: "Configure ignoring known unsolvable advisories"
+author: 'Ibexa AS'
+description: >-
+    Configures Composer `audit.ignore` list for CI tests in an allow-list way.
+
+inputs:
+    php-version:
+        description: 'PHP version'
+        required: true
+
+runs:
+    using: "composite"
+    steps:
+        -   if: startsWith(inputs.php-version, '7.4.')
+            name: Configure advisory ignore list for PHP 7.4
+            shell: bash
+            run: |
+                reason="The affected version of 3rd party component is installed on PHP 7.4. There's no alternative supporting PHP 7.4. Consider upgrading to PHP 8"
+
+                for advisory in \
+                    PKSA-xwpn-zs9j-6wy5 \
+                    PKSA-sf9j-1gs7-xzvx \
+                    PKSA-7h5p-prw9-w5nr
+                do
+                    composer config audit.ignore --json --merge "{\"$advisory\":\"$reason\"}"
+                done
