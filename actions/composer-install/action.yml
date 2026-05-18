@@ -42,6 +42,7 @@ runs:
 
         -   name: Setup PHP Action
             uses: shivammathur/setup-php@v2
+            id: setup_php
             with:
                 php-version: ${{ matrix.php }}
                 coverage: ${{ inputs.coverage }}
@@ -72,6 +73,11 @@ runs:
                 fi
             env:
                 GITHUB_ACTION_PATH: ${{ github.action_path }}
+
+        -   name: 'Ignore known unsolvable advisories'
+            uses: ibexa/gh-workflows/actions/composer-audit-ignore@main
+            with:
+                php-version: ${{ steps.setup_php.outputs.php-version }}
 
         -   uses: ramsey/composer-install@v4
             with:
