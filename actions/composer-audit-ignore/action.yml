@@ -20,7 +20,24 @@ runs:
                 for advisory in \
                     PKSA-xwpn-zs9j-6wy5 \
                     PKSA-sf9j-1gs7-xzvx \
-                    PKSA-7h5p-prw9-w5nr
+                    PKSA-7h5p-prw9-w5nr \
+                    PKSA-5k7f-wvjj-jrgw \
+                    PKSA-sjvz-tbbr-vwth \
+                    PKSA-h8hf-ytnd-5t9q \
+                    PKSA-wwb1-81rc-pd65 \
+                    PKSA-hgmw-wn4d-hpcy \
+                    PKSA-kvv6-36cr-fkzb \
+                    PKSA-n14z-jjjg-g8vd \
+                    PKSA-3mcc-k66d-pydb \
+                    PKSA-gw7n-z4yx-7xjt \
+                    PKSA-dpx1-78wg-1kqs \
+                    PKSA-21g2-dzjv-sky5 \
+                    PKSA-v3kg-5xkr-pykw \
+                    PKSA-yhcn-xrg3-68b1 \
+                    PKSA-2wrf-1xmk-1pky \
+                    PKSA-6319-ffpf-gx66 \
+                    PKSA-n7sg-8f52-pqtf \
+                    PKSA-8kk8-h2xr-h5nx
                 do
                     composer config audit.ignore --json --merge "{\"$advisory\":\"$reason\"}"
                 done
