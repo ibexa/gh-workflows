@@ -11,7 +11,7 @@ inputs:
 runs:
     using: "composite"
     steps:
-        -   if: startsWith(inputs.php-version, '7.4.')
+        -   if: startsWith(inputs.php-version, '7.4')
             name: Configure PHP 7.4-only advisory ignore list
             shell: bash
             run: |
@@ -25,7 +25,7 @@ runs:
                     composer config audit.ignore --json --merge "{\"$advisory\":\"$reason\"}"
                 done
 
-        -   if: startsWith(inputs.php-version, '7.4.') || startsWith(inputs.php-version, '8.0.')
+        -   if: startsWith(inputs.php-version, '7.4') || startsWith(inputs.php-version, '8.0')
             name: Configure shared advisory ignore list for PHP 7.4 and 8.0
             env:
                 PHP_VERSION: ${{ inputs.php-version }}
