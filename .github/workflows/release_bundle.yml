@@ -32,7 +32,8 @@ jobs:
           previousTag: ${{ steps.prevrelease.outputs.previousTag }}
 
       - name: Print the changelog
-        run: echo "${{ steps.changelog.outputs.changelog }}"
+        run: |
+          printf '%s\n' "${{ steps.changelog.outputs.changelog }}"
 
       - name: Create Release
         id: create_release
