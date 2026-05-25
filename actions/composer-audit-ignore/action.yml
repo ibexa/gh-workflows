@@ -25,8 +25,8 @@ runs:
                     composer config audit.ignore --json --merge "{\"$advisory\":\"$reason\"}"
                 done
 
-        -   if: startsWith(inputs.php-version, '7.4') || startsWith(inputs.php-version, '8.0')
-            name: Configure shared advisory ignore list for PHP 7.4 and 8.0
+        -   if: startsWith(inputs.php-version, '7.3') || startsWith(inputs.php-version, '7.4') || startsWith(inputs.php-version, '8.0')
+            name: Configure shared advisory ignore list for PHP 7.3, 7.4 and 8.0
             env:
                 PHP_VERSION: ${{ inputs.php-version }}
             shell: bash
