@@ -314,7 +314,7 @@ jobs:
                   ],
                 });
                 EOF
-                npm install --no-save @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
+                npm install --no-save --legacy-peer-deps @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
 
             - name: Install Playwright browsers
               run: |
