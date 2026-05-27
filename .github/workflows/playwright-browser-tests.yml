@@ -30,7 +30,7 @@ on:
                 description: "Node.js version for running Playwright"
                 required: false
                 type: string
-                default: "20"
+                default: "22"
             ci-scripts-branch:
                 description: "Branch from ibexa/ci-scripts to use"
                 required: false
@@ -174,18 +174,137 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: ${{ inputs.node-version }}
-                  cache: 'npm'
 
-            - name: Install Node.js dependencies
-              run: npm ci
+            # Inject playwright.config.ts and playwright-global-setup.ts into the installed project.
+            # testMatch discovers tests shipped by all installed Ibexa packages
+            # under vendor/ibexa/*/tests/playwright_ts/tests/**/*.spec.ts
+            - name: Inject Playwright config into installed project
+              run: |
+                cd ${HOME}/build/project
+                cat > playwright-global-setup.ts << 'EOF'
+                import { chromium } from '@playwright/test';
+                import { execSync } from 'child_process';
+                import { globSync } from 'fs';
+                import path from 'path';
+
+                export default async function globalSetup(): Promise<void> {
+                  const projectRoot = process.cwd();
+                  const dockerEnvFile = process.env.DOCKER_COMPOSE_ENV_FILE;
+
+                  // Run migration YAML files from all installed Ibexa packages
+                  const migrationFiles = globSync('vendor/ibexa/*/tests/playwright_ts/migrations/*.yaml');
+                  for (const migrationFile of migrationFiles) {
+                    const absPath = path.resolve(projectRoot, migrationFile);
+                    try {
+                      if (dockerEnvFile) {
+                        const containerPath = absPath.replace(projectRoot, '/var/www');
+                        execSync(
+                          `docker compose --env-file="${dockerEnvFile}" exec -T --user www-data app sh -c "php bin/console ibexa:migrations:import '${containerPath}' --no-interaction && php bin/console ibexa:migrations:migrate --no-interaction"`,
+                          { cwd: projectRoot, stdio: 'inherit' },
+                        );
+                      } else {
+                        execSync(
+                          `php bin/console ibexa:migrations:import "${absPath}" --no-interaction && php bin/console ibexa:migrations:migrate --no-interaction`,
+                          { cwd: projectRoot, stdio: 'inherit' },
+                        );
+                      }
+                    } catch {
+                      // migration already executed or non-fatal — continue
+                    }
+                  }
+
+                  // One-time browser login — saves session to playwright-auth.json
+                  const baseURL = process.env.APP_URL ?? 'http://localhost:8080';
+                  const adminUser = process.env.ADMIN_LOGIN ?? 'admin';
+                  const adminPassword = process.env.ADMIN_PASSWORD ?? 'publish';
+
+                  const browser = await chromium.launch({ headless: true });
+                  const context = await browser.newContext({ baseURL, locale: 'en-GB' });
+                  const page = await context.newPage();
+
+                  try {
+                    await page.goto('/admin/login');
+                    await page.waitForLoadState('domcontentloaded');
+                    await page.locator('#username').waitFor({ state: 'visible', timeout: 30_000 });
+                    await page.locator('#username').pressSequentially(adminUser);
+                    await page.keyboard.press('Tab');
+                    await page.locator('#password').pressSequentially(adminPassword);
+                    await page.keyboard.press('Tab');
+                    await page.locator('button[type="submit"].ibexa-login__btn--sign-in').waitFor({ state: 'visible', timeout: 10_000 });
+                    await page.locator('button[type="submit"].ibexa-login__btn--sign-in').click();
+                    await page.waitForLoadState('networkidle');
+                    await context.storageState({ path: './playwright-auth.json' });
+                  } finally {
+                    await context.close();
+                    await browser.close();
+                  }
+                }
+                EOF
+
+                cat > playwright.config.ts << 'EOF'
+                import { defineConfig, devices } from '@playwright/test';
+
+                const baseURL = process.env.APP_URL ?? 'http://localhost:8080';
+                const vendorTests = 'vendor/ibexa/*/tests/playwright_ts/tests/**/*.spec.ts';
+
+                export default defineConfig({
+                  testMatch: vendorTests,
+                  globalSetup: './playwright-global-setup.ts',
+                  fullyParallel: false,
+                  forbidOnly: !!process.env.CI,
+                  retries: process.env.CI ? 1 : 0,
+                  workers: process.env.CI ? 1 : undefined,
+                  reporter: process.env.CI ? 'github' : 'html',
+                  use: {
+                    baseURL,
+                    storageState: './playwright-auth.json',
+                    locale: 'en-GB',
+                    ignoreHTTPSErrors: true,
+                    trace: 'retain-on-failure',
+                    screenshot: 'only-on-failure',
+                    video: 'on-first-retry',
+                    viewport: { width: 1920, height: 1080 },
+                  },
+                  projects: [
+                    {
+                      name: 'oss',
+                      grep: /@IbexaOSS/,
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                    {
+                      name: 'headless',
+                      grep: /@IbexaHeadless/,
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                    {
+                      name: 'experience',
+                      grep: /@IbexaExperience/,
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                    {
+                      name: 'commerce',
+                      grep: /@IbexaCommerce/,
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                  ],
+                });
+                EOF
+                npm install --no-save @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@github:ibexa/cohesivo-playwright#main
 
             - name: Install Playwright browsers
-              run: npx playwright install --with-deps chromium
+              run: |
+                cd ${HOME}/build/project
+                npx playwright install --with-deps chromium
 
             - name: Run Playwright tests
-              run: npx playwright test ${{ inputs.test-suite }}
+              run: |
+                cd ${HOME}/build/project
+                npx playwright test ${{ inputs.test-suite }}
               env:
                 APP_URL: http://localhost:8080
+                DOCKER_COMPOSE_ENV_FILE: ${{ env.HOME }}/build/project/.env
+                ADMIN_LOGIN: admin
+                ADMIN_PASSWORD: publish
                 CI: true
 
             - name: Upload Playwright report
@@ -193,7 +312,7 @@ jobs:
               uses: actions/upload-artifact@v4
               with:
                   name: playwright-report-${{ inputs.project-edition }}
-                  path: playwright-report/
+                  path: ${{ env.HOME }}/build/project/playwright-report/
                   retention-days: 14
 
             - if: always() && github.event_name != 'pull_request'
