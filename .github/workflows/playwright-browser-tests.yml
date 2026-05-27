@@ -1,0 +1,225 @@
+name: Browser tests (Playwright)
+
+on:
+    workflow_call:
+        inputs:
+            project-edition:
+                description: "Project edition to set up: oss, headless, experience, commerce"
+                required: true
+                type: string
+            test-suite:
+                description: "Playwright CLI args (e.g. --project=commerce)"
+                required: true
+                type: string
+            project-version:
+                description: "Project version (e.g. 6.0.x-dev). If empty, inferred from branch alias."
+                required: false
+                type: string
+                default: ''
+            setup:
+                description: "Docker Compose files to use"
+                required: false
+                type: string
+                default: "doc/docker/base-dev.yml"
+            php-image:
+                description: "PHP Docker image to use"
+                required: false
+                type: string
+                default: "ghcr.io/ibexa/docker/php:8.3-node22"
+            node-version:
+                description: "Node.js version for running Playwright"
+                required: false
+                type: string
+                default: "20"
+            ci-scripts-branch:
+                description: "Branch from ibexa/ci-scripts to use"
+                required: false
+                type: string
+                default: "main"
+            test-setup-phase-1:
+                description: "Behat suite to run before Playwright tests for data seeding - phase 1"
+                required: false
+                type: string
+                default: ""
+            test-setup-phase-2:
+                description: "Behat suite to run before Playwright tests for data seeding - phase 2"
+                required: false
+                type: string
+                default: ""
+            send-success-notification:
+                description: "Send a Slack notification when tests pass"
+                required: false
+                type: boolean
+                default: true
+            timeout:
+                description: "Job timeout in minutes"
+                required: false
+                type: number
+                default: 60
+        secrets:
+            SLACK_WEBHOOK_URL:
+                required: false
+            SATIS_NETWORK_KEY:
+                required: false
+            SATIS_NETWORK_TOKEN:
+                required: false
+            AUTOMATION_CLIENT_ID:
+                required: false
+            AUTOMATION_CLIENT_SECRET:
+                required: false
+            EZROBOT_33:
+                required: false
+
+env:
+    APP_ENV: behat
+    APP_DEBUG: 1
+    APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
+    PHP_INI_ENV_memory_limit: 1G
+    COMPOSER_CACHE_DIR: ~/.composer/cache
+
+jobs:
+    browser-tests:
+        runs-on: ubuntu-latest
+        timeout-minutes: ${{ inputs.timeout }}
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up project version
+              id: project-version
+              run: |
+                if [[ "$version" == "" ]] ; then
+                    echo "Input project version not set, taking the value from composer.json"
+                    version=$(cat composer.json | jq -r '.extra | ."branch-alias" | .[]')
+                fi
+                if [[ "$version" == "3.3.x-dev" ]] ; then
+                    version="^3.3.x-dev"
+                fi
+                echo "version=$version" >> $GITHUB_OUTPUT
+              env:
+                version: ${{ inputs.project-version }}
+
+            - name: Setup PHP Action
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: 8.3
+                  coverage: none
+
+            - name: Cache dependencies
+              uses: actions/cache@v4
+              with:
+                  path: ${{ env.COMPOSER_CACHE_DIR }}
+                  key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
+                  restore-keys: |
+                    ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}
+
+            - name: Generate token
+              id: generate_token
+              uses: actions/create-github-app-token@v2
+              with:
+                  app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+                  owner: ibexa
+
+            - if: env.SATIS_NETWORK_KEY != ''
+              name: Add composer keys for private packagist
+              run: |
+                  composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+              env:
+                  SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
+                  SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
+
+            - name: Add composer key for GitHub App
+              if: ${{ steps.generate_token.outputs.token != '' }}
+              run: |
+                  composer config github-oauth.github.com $GITHUB_TOKEN
+              env:
+                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+            - if: startsWith(steps.project-version.outputs.version, 'v') == false
+              name: Set up whole project using the tested dependency (dev version)
+              run: |
+                curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ steps.project-version.outputs.version }}/prepare_project_edition.sh" > prepare_project_edition.sh
+                chmod +x prepare_project_edition.sh
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - if: startsWith(steps.project-version.outputs.version, 'v')
+              name: Set up whole project using a stable release
+              run: |
+                curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
+                chmod +x prepare_project_edition.sh
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - name: Add ibexa_integrated_help config
+              if: inputs.project-edition != 'oss'
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
+
+            - if: inputs.test-setup-phase-1 != ''
+              name: Run first phase of tests setup
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+
+            - if: inputs.test-setup-phase-2 != ''
+              name: Run second phase of tests setup
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: 'npm'
+
+            - name: Install Node.js dependencies
+              run: npm ci
+
+            - name: Install Playwright browsers
+              run: npx playwright install --with-deps chromium
+
+            - name: Run Playwright tests
+              run: npx playwright test ${{ inputs.test-suite }}
+              env:
+                APP_URL: http://localhost:8080
+                CI: true
+
+            - name: Upload Playwright report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-report-${{ inputs.project-edition }}
+                  path: playwright-report/
+                  retention-days: 14
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+
+            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
+              name: Create Slack message success variables
+              run: |
+                echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
+                 \"}}]}" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
+              name: Send notification about workflow result
+              uses: slackapi/slack-github-action@v1.23.0
+              with:
+                  payload: ${{ env.SLACK_PAYLOAD }}
+              env:
+                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
