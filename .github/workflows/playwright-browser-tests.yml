@@ -180,8 +180,12 @@ jobs:
               run: |
                 git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
                 git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "ssh://git@github.com/"
+                git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
               env:
                 GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+            - name: Fix write permissions on project directory
+              run: sudo chmod -R a+w ${HOME}/build/project
 
             # Inject playwright.config.ts and playwright-global-setup.ts into the installed project.
             # testMatch discovers tests shipped by all installed Ibexa packages
@@ -310,7 +314,7 @@ jobs:
                   ],
                 });
                 EOF
-                npm install --no-save @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@github:ibexa/cohesivo-playwright#main
+                npm install --no-save @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
 
             - name: Install Playwright browsers
               run: |
