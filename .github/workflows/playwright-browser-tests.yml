@@ -175,6 +175,14 @@ jobs:
               with:
                   node-version: ${{ inputs.node-version }}
 
+            - name: Configure npm to use HTTPS for GitHub packages
+              if: ${{ steps.generate_token.outputs.token != '' }}
+              run: |
+                git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
+                git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "ssh://git@github.com/"
+              env:
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
             # Inject playwright.config.ts and playwright-global-setup.ts into the installed project.
             # testMatch discovers tests shipped by all installed Ibexa packages
             # under vendor/ibexa/*/tests/playwright_ts/tests/**/*.spec.ts
@@ -183,18 +191,31 @@ jobs:
                 cd ${HOME}/build/project
                 cat > playwright-global-setup.ts << 'EOF'
                 import { chromium } from '@playwright/test';
-                import { execSync } from 'child_process';
-                import { globSync } from 'fs';
+                import { execSync, execFileSync } from 'child_process';
                 import path from 'path';
+                import fs from 'fs';
 
                 export default async function globalSetup(): Promise<void> {
                   const projectRoot = process.cwd();
                   const dockerEnvFile = process.env.DOCKER_COMPOSE_ENV_FILE;
 
-                  // Run migration YAML files from all installed Ibexa packages
-                  const migrationFiles = globSync('vendor/ibexa/*/tests/playwright_ts/migrations/*.yaml');
-                  for (const migrationFile of migrationFiles) {
-                    const absPath = path.resolve(projectRoot, migrationFile);
+                  // Discover migration YAML files from all installed Ibexa packages
+                  const migrationFiles: string[] = [];
+                  const vendorIbexa = path.join(projectRoot, 'vendor', 'ibexa');
+                  if (fs.existsSync(vendorIbexa)) {
+                    for (const pkg of fs.readdirSync(vendorIbexa)) {
+                      const migrationsDir = path.join(vendorIbexa, pkg, 'tests', 'playwright_ts', 'migrations');
+                      if (fs.existsSync(migrationsDir)) {
+                        for (const file of fs.readdirSync(migrationsDir)) {
+                          if (file.endsWith('.yaml') || file.endsWith('.yml')) {
+                            migrationFiles.push(path.join(migrationsDir, file));
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  for (const absPath of migrationFiles) {
                     try {
                       if (dockerEnvFile) {
                         const containerPath = absPath.replace(projectRoot, '/var/www');
