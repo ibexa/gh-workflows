@@ -332,6 +332,9 @@ jobs:
             - name: Run Playwright tests
               run: |
                 cd ${HOME}/build/project
+                echo "=== Playwright spec files found in vendor ==="
+                find vendor/ibexa -name "*.spec.ts" -path "*/playwright_ts/tests/*" 2>/dev/null || echo "None found"
+                echo "=== Running Playwright ==="
                 /tmp/playwright-tools/node_modules/.bin/playwright test ${{ inputs.test-suite }}
               env:
                 APP_URL: http://localhost:8080
