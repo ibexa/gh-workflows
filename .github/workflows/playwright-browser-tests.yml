@@ -308,22 +308,18 @@ jobs:
                   projects: [
                     {
                       name: 'oss',
-                      grep: /@IbexaOSS/,
                       use: { ...devices['Desktop Chrome'] },
                     },
                     {
                       name: 'headless',
-                      grep: /@IbexaHeadless/,
                       use: { ...devices['Desktop Chrome'] },
                     },
                     {
                       name: 'experience',
-                      grep: /@IbexaExperience/,
                       use: { ...devices['Desktop Chrome'] },
                     },
                     {
                       name: 'commerce',
-                      grep: /@IbexaCommerce/,
                       use: { ...devices['Desktop Chrome'] },
                     },
                   ],
