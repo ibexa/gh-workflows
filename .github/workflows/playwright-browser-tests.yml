@@ -191,8 +191,14 @@ jobs:
               run: |
                 for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright_ts; do
                   if [ -f "$dir/package.json" ]; then
-                    echo "→ npm ci in $dir"
-                    cd "$dir" && npm ci
+                    cd "$dir"
+                    if [ -f "package-lock.json" ]; then
+                      echo "→ npm ci in $dir"
+                      npm ci
+                    else
+                      echo "→ npm install in $dir (no lock file)"
+                      npm install
+                    fi
                   fi
                 done
 
@@ -335,7 +341,7 @@ jobs:
                 echo "=== Playwright spec files found in vendor ==="
                 find vendor/ibexa -name "*.spec.ts" -path "*/playwright_ts/tests/*" 2>/dev/null || echo "None found"
                 echo "=== Running Playwright ==="
-                /tmp/playwright-tools/node_modules/.bin/playwright test ${{ inputs.test-suite }}
+                NODE_PATH=/tmp/playwright-tools/node_modules /tmp/playwright-tools/node_modules/.bin/playwright test ${{ inputs.test-suite }}
               env:
                 APP_URL: http://localhost:8080
                 DOCKER_COMPOSE_ENV_FILE: /home/runner/build/project/.env
