@@ -325,9 +325,13 @@ jobs:
                   ],
                 });
                 EOF
-                echo "=== playwright.config.ts content ==="
-                cat playwright.config.ts
                 npm install --prefix /tmp/playwright-tools --legacy-peer-deps @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
+                mkdir -p node_modules/@playwright
+                ln -sf /tmp/playwright-tools/node_modules/@playwright/test node_modules/@playwright/test
+                ln -sf /tmp/playwright-tools/node_modules/playwright node_modules/playwright
+                for dir in vendor/ibexa/*/tests/playwright_ts/node_modules; do
+                  [ -d "$dir" ] && rm -rf "$dir/playwright" "$dir/@playwright" 2>/dev/null || true
+                done
 
             - name: Install Playwright browsers
               run: |
