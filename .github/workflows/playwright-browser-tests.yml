@@ -315,18 +315,22 @@ jobs:
                 });
                 EOF
                 npm install --prefix /tmp/playwright-tools --legacy-peer-deps @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
+                # Symlink Playwright packages into project root node_modules so esbuild can resolve them
+                # when transforming spec files in vendor/ibexa/*/tests/playwright_ts/tests/
+                TOOLS="/tmp/playwright-tools/node_modules"
+                mkdir -p node_modules/@playwright node_modules/@ibexa
+                ln -sf "$TOOLS/@playwright/test"              node_modules/@playwright/test
+                ln -sf "$TOOLS/playwright"                    node_modules/playwright
+                ln -sf "$TOOLS/@ibexa/cohesivo-playwright"   node_modules/@ibexa/cohesivo-playwright
 
             - name: Install Playwright browsers
               run: |
-                export PATH="/tmp/playwright-tools/node_modules/.bin:$PATH"
-                playwright install --with-deps chromium
+                /tmp/playwright-tools/node_modules/.bin/playwright install --with-deps chromium
 
             - name: Run Playwright tests
               run: |
                 cd ${HOME}/build/project
-                export PATH="/tmp/playwright-tools/node_modules/.bin:$PATH"
-                export NODE_PATH="/tmp/playwright-tools/node_modules"
-                playwright test ${{ inputs.test-suite }}
+                /tmp/playwright-tools/node_modules/.bin/playwright test ${{ inputs.test-suite }}
               env:
                 APP_URL: http://localhost:8080
                 DOCKER_COMPOSE_ENV_FILE: ${{ env.HOME }}/build/project/.env
