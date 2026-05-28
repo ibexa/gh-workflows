@@ -185,7 +185,7 @@ jobs:
                 GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
             - name: Fix write permissions on project directory
-              run: sudo chmod -R a+w ${HOME}/build/project
+              run: sudo chmod -R a+rwX ${HOME}/build/project
 
             # Inject playwright.config.ts and playwright-global-setup.ts into the installed project.
             # testMatch discovers tests shipped by all installed Ibexa packages
