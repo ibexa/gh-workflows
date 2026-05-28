@@ -336,6 +336,16 @@ jobs:
                 cd ${HOME}/build/project
                 echo "=== Playwright spec files found in vendor ==="
                 find vendor/ibexa -name "*.spec.ts" -path "*/playwright_ts/tests/*" 2>/dev/null || echo "None found"
+                echo "=== node_modules check ==="
+                for dir in vendor/ibexa/*/tests/playwright_ts; do
+                  if [ -d "$dir/node_modules/@ibexa/cohesivo-playwright" ]; then
+                    echo "✓ $dir has @ibexa/cohesivo-playwright"
+                  else
+                    echo "✗ $dir MISSING @ibexa/cohesivo-playwright"
+                  fi
+                done
+                echo "=== Listing tests (no run) ==="
+                NODE_PATH=/tmp/playwright-tools/node_modules /tmp/playwright-tools/node_modules/.bin/playwright test --list ${{ inputs.test-suite }} 2>&1 || true
                 echo "=== Running Playwright ==="
                 NODE_PATH=/tmp/playwright-tools/node_modules /tmp/playwright-tools/node_modules/.bin/playwright test ${{ inputs.test-suite }}
               env:
