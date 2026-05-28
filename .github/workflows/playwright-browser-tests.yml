@@ -314,17 +314,19 @@ jobs:
                   ],
                 });
                 EOF
-                npm install --no-save --legacy-peer-deps @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
+                npm install --prefix /tmp/playwright-tools --legacy-peer-deps @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
 
             - name: Install Playwright browsers
               run: |
-                cd ${HOME}/build/project
-                npx playwright install --with-deps chromium
+                export PATH="/tmp/playwright-tools/node_modules/.bin:$PATH"
+                playwright install --with-deps chromium
 
             - name: Run Playwright tests
               run: |
                 cd ${HOME}/build/project
-                npx playwright test ${{ inputs.test-suite }}
+                export PATH="/tmp/playwright-tools/node_modules/.bin:$PATH"
+                export NODE_PATH="/tmp/playwright-tools/node_modules"
+                playwright test ${{ inputs.test-suite }}
               env:
                 APP_URL: http://localhost:8080
                 DOCKER_COMPOSE_ENV_FILE: ${{ env.HOME }}/build/project/.env
