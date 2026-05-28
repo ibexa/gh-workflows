@@ -187,6 +187,15 @@ jobs:
             - name: Fix write permissions on project directory
               run: sudo chmod -R a+rwX ${HOME}/build/project
 
+            - name: Install npm dependencies in Playwright test directories
+              run: |
+                for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright_ts; do
+                  if [ -f "$dir/package.json" ]; then
+                    echo "→ npm ci in $dir"
+                    cd "$dir" && npm ci
+                  fi
+                done
+
             # Inject playwright.config.ts and playwright-global-setup.ts into the installed project.
             # testMatch discovers tests shipped by all installed Ibexa packages
             # under vendor/ibexa/*/tests/playwright_ts/tests/**/*.spec.ts
@@ -315,14 +324,6 @@ jobs:
                 });
                 EOF
                 npm install --prefix /tmp/playwright-tools --legacy-peer-deps @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
-                # Symlink Playwright packages into project root node_modules so esbuild can resolve them
-                # when transforming spec files in vendor/ibexa/*/tests/playwright_ts/tests/
-                TOOLS="/tmp/playwright-tools/node_modules"
-                mkdir -p node_modules/@playwright node_modules/@ibexa
-                rm -rf node_modules/@playwright/test node_modules/playwright node_modules/@ibexa/cohesivo-playwright
-                ln -s "$TOOLS/@playwright/test"            node_modules/@playwright/test
-                ln -s "$TOOLS/playwright"                  node_modules/playwright
-                ln -s "$TOOLS/@ibexa/cohesivo-playwright"  node_modules/@ibexa/cohesivo-playwright
 
             - name: Install Playwright browsers
               run: |
