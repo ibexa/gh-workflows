@@ -270,7 +270,7 @@ jobs:
                 import { defineConfig, devices } from '@playwright/test';
 
                 const baseURL = process.env.APP_URL ?? 'http://localhost:8080';
-                const vendorTests = 'vendor/ibexa/*/tests/playwright_ts/tests/**/*.spec.ts';
+                const vendorTests = '**/vendor/ibexa/*/tests/playwright_ts/tests/**/*.spec.ts';
 
                 export default defineConfig({
                   testMatch: vendorTests,
@@ -319,9 +319,10 @@ jobs:
                 # when transforming spec files in vendor/ibexa/*/tests/playwright_ts/tests/
                 TOOLS="/tmp/playwright-tools/node_modules"
                 mkdir -p node_modules/@playwright node_modules/@ibexa
-                ln -sf "$TOOLS/@playwright/test"              node_modules/@playwright/test
-                ln -sf "$TOOLS/playwright"                    node_modules/playwright
-                ln -sf "$TOOLS/@ibexa/cohesivo-playwright"   node_modules/@ibexa/cohesivo-playwright
+                rm -rf node_modules/@playwright/test node_modules/playwright node_modules/@ibexa/cohesivo-playwright
+                ln -s "$TOOLS/@playwright/test"            node_modules/@playwright/test
+                ln -s "$TOOLS/playwright"                  node_modules/playwright
+                ln -s "$TOOLS/@ibexa/cohesivo-playwright"  node_modules/@ibexa/cohesivo-playwright
 
             - name: Install Playwright browsers
               run: |
@@ -333,7 +334,7 @@ jobs:
                 /tmp/playwright-tools/node_modules/.bin/playwright test ${{ inputs.test-suite }}
               env:
                 APP_URL: http://localhost:8080
-                DOCKER_COMPOSE_ENV_FILE: ${{ env.HOME }}/build/project/.env
+                DOCKER_COMPOSE_ENV_FILE: /home/runner/build/project/.env
                 ADMIN_LOGIN: admin
                 ADMIN_PASSWORD: publish
                 CI: true
@@ -343,7 +344,7 @@ jobs:
               uses: actions/upload-artifact@v4
               with:
                   name: playwright-report-${{ inputs.project-edition }}
-                  path: ${{ env.HOME }}/build/project/playwright-report/
+                  path: /home/runner/build/project/playwright-report/
                   retention-days: 14
 
             - if: always() && github.event_name != 'pull_request'
