@@ -272,8 +272,11 @@ jobs:
                     await page.keyboard.press('Tab');
                     await page.locator('button[type="submit"].ibexa-login__btn--sign-in').waitFor({ state: 'visible', timeout: 10_000 });
                     await page.locator('button[type="submit"].ibexa-login__btn--sign-in').click();
+                    await page.waitForURL('**/admin/**', { timeout: 60_000 });
                     await page.waitForLoadState('networkidle');
+                    console.log('Login successful, current URL:', page.url());
                     await context.storageState({ path: './playwright-auth.json' });
+                    console.log('Auth state saved to playwright-auth.json');
                   } finally {
                     await context.close();
                     await browser.close();
@@ -294,7 +297,10 @@ jobs:
                   forbidOnly: !!process.env.CI,
                   retries: process.env.CI ? 1 : 0,
                   workers: process.env.CI ? 1 : undefined,
-                  reporter: process.env.CI ? 'github' : 'html',
+                  timeout: 10_000,
+                  reporter: process.env.CI
+                    ? [['github'], ['html', { open: 'never', outputFolder: './playwright-report' }]]
+                    : [['html']],
                   use: {
                     baseURL,
                     storageState: './playwright-auth.json',
