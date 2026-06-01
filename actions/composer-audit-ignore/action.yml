@@ -20,12 +20,7 @@ runs:
                 for advisory in \
                     PKSA-xwpn-zs9j-6wy5 \
                     PKSA-sf9j-1gs7-xzvx \
-                    PKSA-7h5p-prw9-w5nr \
-                    PKSA-fbvq-z33h-r2np \
-                    PKSA-g9zw-qxh8-pq8w \
-                    PKSA-yd6k-t2gh-1m43 \
-                    PKSA-1tmc-rt7x-12w6 \
-                    PKSA-xx6c-6d96-db2w
+                    PKSA-7h5p-prw9-w5nr
                 do
                     composer config audit.ignore --json --merge "{\"$advisory\":\"$reason\"}"
                 done
@@ -57,7 +52,12 @@ runs:
                     PKSA-n7sg-8f52-pqtf \
                     PKSA-8kk8-h2xr-h5nx \
                     PKSA-2rbx-bjdx-4d4d \
-                    PKSA-fs5b-x5k4-1h39
+                    PKSA-fs5b-x5k4-1h39 \
+                    PKSA-fbvq-z33h-r2np \
+                    PKSA-g9zw-qxh8-pq8w \
+                    PKSA-yd6k-t2gh-1m43 \
+                    PKSA-1tmc-rt7x-12w6 \
+                    PKSA-xx6c-6d96-db2w
                 do
                     composer config audit.ignore --json --merge "{\"$advisory\":\"$reason\"}"
                 done
