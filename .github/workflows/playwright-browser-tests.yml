@@ -1,0 +1,404 @@
+name: Browser tests (Playwright)
+
+on:
+    workflow_call:
+        inputs:
+            project-edition:
+                description: "Project edition to set up: oss, headless, experience, commerce"
+                required: true
+                type: string
+            test-suite:
+                description: "Playwright CLI args (e.g. --project=commerce)"
+                required: true
+                type: string
+            project-version:
+                description: "Project version (e.g. 6.0.x-dev). If empty, inferred from branch alias."
+                required: false
+                type: string
+                default: ''
+            setup:
+                description: "Docker Compose files to use"
+                required: false
+                type: string
+                default: "doc/docker/base-dev.yml"
+            php-image:
+                description: "PHP Docker image to use"
+                required: false
+                type: string
+                default: "ghcr.io/ibexa/docker/php:8.3-node22"
+            node-version:
+                description: "Node.js version for running Playwright"
+                required: false
+                type: string
+                default: "22"
+            ci-scripts-branch:
+                description: "Branch from ibexa/ci-scripts to use"
+                required: false
+                type: string
+                default: "main"
+            test-setup-phase-1:
+                description: "Behat suite to run before Playwright tests for data seeding - phase 1"
+                required: false
+                type: string
+                default: ""
+            test-setup-phase-2:
+                description: "Behat suite to run before Playwright tests for data seeding - phase 2"
+                required: false
+                type: string
+                default: ""
+            send-success-notification:
+                description: "Send a Slack notification when tests pass"
+                required: false
+                type: boolean
+                default: true
+            timeout:
+                description: "Job timeout in minutes"
+                required: false
+                type: number
+                default: 60
+        secrets:
+            SLACK_WEBHOOK_URL:
+                required: false
+            SATIS_NETWORK_KEY:
+                required: false
+            SATIS_NETWORK_TOKEN:
+                required: false
+            AUTOMATION_CLIENT_ID:
+                required: false
+            AUTOMATION_CLIENT_SECRET:
+                required: false
+            EZROBOT_33:
+                required: false
+
+env:
+    APP_ENV: behat
+    APP_DEBUG: 1
+    APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
+    PHP_INI_ENV_memory_limit: 1G
+    COMPOSER_CACHE_DIR: ~/.composer/cache
+
+jobs:
+    browser-tests:
+        runs-on: ubuntu-latest
+        timeout-minutes: ${{ inputs.timeout }}
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up project version
+              id: project-version
+              run: |
+                if [[ "$version" == "" ]] ; then
+                    echo "Input project version not set, taking the value from composer.json"
+                    version=$(cat composer.json | jq -r '.extra | ."branch-alias" | .[]')
+                fi
+                if [[ "$version" == "3.3.x-dev" ]] ; then
+                    version="^3.3.x-dev"
+                fi
+                echo "version=$version" >> $GITHUB_OUTPUT
+              env:
+                version: ${{ inputs.project-version }}
+
+            - name: Setup PHP Action
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: 8.3
+                  coverage: none
+
+            - name: Cache dependencies
+              uses: actions/cache@v4
+              with:
+                  path: ${{ env.COMPOSER_CACHE_DIR }}
+                  key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
+                  restore-keys: |
+                    ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}
+
+            - name: Generate token
+              id: generate_token
+              uses: actions/create-github-app-token@v2
+              with:
+                  app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+                  owner: ibexa
+
+            - if: env.SATIS_NETWORK_KEY != ''
+              name: Add composer keys for private packagist
+              run: |
+                  composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+              env:
+                  SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
+                  SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
+
+            - name: Add composer key for GitHub App
+              if: ${{ steps.generate_token.outputs.token != '' }}
+              run: |
+                  composer config github-oauth.github.com $GITHUB_TOKEN
+              env:
+                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+            - if: startsWith(steps.project-version.outputs.version, 'v') == false
+              name: Set up whole project using the tested dependency (dev version)
+              run: |
+                curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ steps.project-version.outputs.version }}/prepare_project_edition.sh" > prepare_project_edition.sh
+                chmod +x prepare_project_edition.sh
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - if: startsWith(steps.project-version.outputs.version, 'v')
+              name: Set up whole project using a stable release
+              run: |
+                curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
+                chmod +x prepare_project_edition.sh
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - name: Add ibexa_integrated_help config
+              if: inputs.project-edition != 'oss'
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
+
+            - if: inputs.test-setup-phase-1 != ''
+              name: Run first phase of tests setup
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+
+            - if: inputs.test-setup-phase-2 != ''
+              name: Run second phase of tests setup
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+
+            - name: Configure npm to use HTTPS for GitHub packages
+              if: ${{ steps.generate_token.outputs.token != '' }}
+              run: |
+                git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
+                git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "ssh://git@github.com/"
+                git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+              env:
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+            - name: Fix write permissions on project directory
+              run: sudo chmod -R a+rwX ${HOME}/build/project
+
+            - name: Install npm dependencies in Playwright test directories
+              run: |
+                for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright_ts; do
+                  if [ -f "$dir/package.json" ]; then
+                    cd "$dir"
+                    if [ -f "package-lock.json" ]; then
+                      echo "→ npm ci in $dir"
+                      npm ci
+                    else
+                      echo "→ npm install in $dir (no lock file)"
+                      npm install
+                    fi
+                  fi
+                done
+
+            # Inject playwright.config.ts and playwright-global-setup.ts into the installed project.
+            # testMatch discovers tests shipped by all installed Ibexa packages
+            # under vendor/ibexa/*/tests/playwright_ts/tests/**/*.spec.ts
+            - name: Inject Playwright config into installed project
+              run: |
+                cd ${HOME}/build/project
+                cat > playwright-global-setup.ts << 'EOF'
+                import { chromium } from '@playwright/test';
+                import { execSync, execFileSync } from 'child_process';
+                import path from 'path';
+                import fs from 'fs';
+
+                export default async function globalSetup(): Promise<void> {
+                  const projectRoot = process.cwd();
+                  const dockerEnvFile = process.env.DOCKER_COMPOSE_ENV_FILE;
+
+                  // Discover migration YAML files from all installed Ibexa packages
+                  const migrationFiles: string[] = [];
+                  const vendorIbexa = path.join(projectRoot, 'vendor', 'ibexa');
+                  if (fs.existsSync(vendorIbexa)) {
+                    for (const pkg of fs.readdirSync(vendorIbexa)) {
+                      const migrationsDir = path.join(vendorIbexa, pkg, 'tests', 'playwright_ts', 'migrations');
+                      if (fs.existsSync(migrationsDir)) {
+                        for (const file of fs.readdirSync(migrationsDir)) {
+                          if (file.endsWith('.yaml') || file.endsWith('.yml')) {
+                            migrationFiles.push(path.join(migrationsDir, file));
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  for (const absPath of migrationFiles) {
+                    try {
+                      if (dockerEnvFile) {
+                        const containerPath = absPath.replace(projectRoot, '/var/www');
+                        execSync(
+                          `docker compose --env-file="${dockerEnvFile}" exec -T --user www-data app sh -c "php bin/console ibexa:migrations:import '${containerPath}' --no-interaction && php bin/console ibexa:migrations:migrate --no-interaction"`,
+                          { cwd: projectRoot, stdio: 'inherit' },
+                        );
+                      } else {
+                        execSync(
+                          `php bin/console ibexa:migrations:import "${absPath}" --no-interaction && php bin/console ibexa:migrations:migrate --no-interaction`,
+                          { cwd: projectRoot, stdio: 'inherit' },
+                        );
+                      }
+                    } catch {
+                      // migration already executed or non-fatal — continue
+                    }
+                  }
+
+                  // One-time browser login — saves session to playwright-auth.json
+                  const baseURL = process.env.APP_URL ?? 'http://localhost:8080';
+                  const adminUser = process.env.ADMIN_LOGIN ?? 'admin';
+                  const adminPassword = process.env.ADMIN_PASSWORD ?? 'publish';
+
+                  const browser = await chromium.launch({ headless: true });
+                  const context = await browser.newContext({ baseURL, locale: 'en-GB' });
+                  const page = await context.newPage();
+
+                  try {
+                    await page.goto('/admin/login');
+                    await page.waitForLoadState('domcontentloaded');
+                    await page.locator('#username').waitFor({ state: 'visible', timeout: 30_000 });
+                    await page.locator('#username').pressSequentially(adminUser);
+                    await page.keyboard.press('Tab');
+                    await page.locator('#password').pressSequentially(adminPassword);
+                    await page.keyboard.press('Tab');
+                    await page.locator('button[type="submit"].ibexa-login__btn--sign-in').waitFor({ state: 'visible', timeout: 10_000 });
+                    await page.locator('button[type="submit"].ibexa-login__btn--sign-in').click();
+                    await page.waitForURL('**/admin/**', { timeout: 60_000 });
+                    await page.waitForLoadState('networkidle');
+                    console.log('Login successful, current URL:', page.url());
+                    await context.storageState({ path: './playwright-auth.json' });
+                    console.log('Auth state saved to playwright-auth.json');
+                  } finally {
+                    await context.close();
+                    await browser.close();
+                  }
+                }
+                EOF
+
+                cat > playwright.config.ts << 'EOF'
+                import { defineConfig, devices } from '@playwright/test';
+
+                const baseURL = process.env.APP_URL ?? 'http://localhost:8080';
+
+                export default defineConfig({
+                  testDir: './vendor/ibexa',
+                  testMatch: /playwright_ts\/tests\/.*\.spec\.ts/,
+                  globalSetup: './playwright-global-setup.ts',
+                  fullyParallel: false,
+                  forbidOnly: !!process.env.CI,
+                  retries: process.env.CI ? 1 : 0,
+                  workers: process.env.CI ? 1 : undefined,
+                  timeout: 10_000,
+                  reporter: process.env.CI
+                    ? [['github'], ['html', { open: 'never', outputFolder: './playwright-report' }]]
+                    : [['html']],
+                  use: {
+                    baseURL,
+                    storageState: './playwright-auth.json',
+                    locale: 'en-GB',
+                    ignoreHTTPSErrors: true,
+                    trace: 'retain-on-failure',
+                    screenshot: 'only-on-failure',
+                    video: 'on-first-retry',
+                    viewport: { width: 1920, height: 1080 },
+                  },
+                  projects: [
+                    {
+                      name: 'oss',
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                    {
+                      name: 'headless',
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                    {
+                      name: 'experience',
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                    {
+                      name: 'commerce',
+                      use: { ...devices['Desktop Chrome'] },
+                    },
+                  ],
+                });
+                EOF
+                npm install --prefix /tmp/playwright-tools --legacy-peer-deps @playwright/test@^1.44.0 @ibexa/cohesivo-playwright@git+https://github.com/ibexa/cohesivo-playwright.git
+                mkdir -p node_modules/@playwright
+                ln -sf /tmp/playwright-tools/node_modules/@playwright/test node_modules/@playwright/test
+                ln -sf /tmp/playwright-tools/node_modules/playwright node_modules/playwright
+                for dir in vendor/ibexa/*/tests/playwright_ts/node_modules; do
+                  [ -d "$dir" ] && rm -rf "$dir/playwright" "$dir/@playwright" 2>/dev/null || true
+                done
+
+            - name: Install Playwright browsers
+              run: |
+                /tmp/playwright-tools/node_modules/.bin/playwright install --with-deps chromium
+
+            - name: Run Playwright tests
+              run: |
+                cd ${HOME}/build/project
+                echo "=== Playwright spec files found in vendor ==="
+                find vendor/ibexa -name "*.spec.ts" -path "*/playwright_ts/tests/*" 2>/dev/null || echo "None found"
+                echo "=== node_modules check ==="
+                for dir in vendor/ibexa/*/tests/playwright_ts; do
+                  if [ -d "$dir/node_modules/@ibexa/cohesivo-playwright" ]; then
+                    echo "✓ $dir has @ibexa/cohesivo-playwright"
+                  else
+                    echo "✗ $dir MISSING @ibexa/cohesivo-playwright"
+                  fi
+                done
+                echo "=== Listing tests (no run) ==="
+                NODE_PATH=/tmp/playwright-tools/node_modules /tmp/playwright-tools/node_modules/.bin/playwright test --list ${{ inputs.test-suite }} 2>&1 || true
+                echo "=== Running Playwright ==="
+                NODE_PATH=/tmp/playwright-tools/node_modules /tmp/playwright-tools/node_modules/.bin/playwright test ${{ inputs.test-suite }}
+              env:
+                APP_URL: http://localhost:8080
+                DOCKER_COMPOSE_ENV_FILE: /home/runner/build/project/.env
+                ADMIN_LOGIN: admin
+                ADMIN_PASSWORD: publish
+                CI: true
+
+            - name: Upload Playwright report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-report-${{ inputs.project-edition }}
+                  path: /home/runner/build/project/playwright-report/
+                  retention-days: 14
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+
+            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
+              name: Create Slack message success variables
+              run: |
+                echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
+                 \"}}]}" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
+              name: Send notification about workflow result
+              uses: slackapi/slack-github-action@v1.23.0
+              with:
+                  payload: ${{ env.SLACK_PAYLOAD }}
+              env:
+                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
