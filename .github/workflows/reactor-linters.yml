@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: json-yaml-validate
         uses: GrantBirki/json-yaml-validate@v2.7.1
         with:
