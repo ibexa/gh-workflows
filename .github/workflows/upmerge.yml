@@ -11,7 +11,7 @@ jobs:
   merge:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.robot-token }}
@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout code
         if: ${{ steps.destinations.outputs.destination }}
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           ref: ${{ env.DEST_BRANCH }}
           fetch-depth: 0
