@@ -94,11 +94,11 @@ jobs:
           echo "BUILD_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
       - name: Generate token
         id: generate_token
-        uses: tibdex/github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app_id: ${{ secrets.AUTOMATION_CLIENT_ID }}
-          installation_id: ${{ secrets.AUTOMATION_CLIENT_INSTALLATION }}
-          private_key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+          client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+          owner: ibexa
       - name: Get previous release tag based on type
         id: prevrelease
         uses: ibexa/version-logic-action@master
