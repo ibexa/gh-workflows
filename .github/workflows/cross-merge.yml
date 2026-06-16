@@ -21,15 +21,18 @@ jobs:
           uses: rlespinasse/github-slug-action@v3.x
 
         - name: Get merge map
-          uses: octokit/request-action@v2.x
           id: map
           # Allow failures to be ignored.
           # We will consider output as empty
           continue-on-error: true
-          with:
-            owner: ibexa
-            repo: cross-merge-map
-            route: /repos/{owner}/{repo}/contents/${{ github.repository }}
+          shell: bash
+          run: |
+            response=$(gh api /repos/ibexa/cross-merge-map/contents/${{ github.repository }})
+            {
+              echo 'data<<EOF'
+              echo "$response"
+              echo EOF
+            } >> "$GITHUB_OUTPUT"
           env:
             GITHUB_TOKEN: ${{ secrets.robot-token }}
 

@@ -7,24 +7,34 @@ jobs:
     name: Pull Request base branch verification
     runs-on: ubuntu-latest
     steps:
-      - uses: octokit/request-action@v2.x
-        name: Get PR's composer.json
+      - name: Get PR's composer.json
         id: pr
-        with:
-          branch: "!!str ${{ github.event.pull_request.head.ref }}"
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          route: /repos/{repository}/contents/composer.json?ref={branch}
+        shell: bash
+        run: |
+          response=$(gh api --method GET "/repos/${REPOSITORY}/contents/composer.json" -f ref="$BRANCH")
+          {
+            echo 'data<<EOF'
+            echo "$response"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
         env:
-          GITHUB_TOKEN: ${{ github.token }}  
-      - uses: octokit/request-action@v2.x
-        name: Get base's composer.json
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      - name: Get base's composer.json
         id: base
-        with:
-          branch: "!!str ${{ github.event.pull_request.base.ref }}"
-          repository: ${{ github.event.pull_request.base.repo.full_name }}
-          route: /repos/{repository}/contents/composer.json?ref={branch}
+        shell: bash
+        run: |
+          response=$(gh api --method GET "/repos/${REPOSITORY}/contents/composer.json" -f ref="$BRANCH")
+          {
+            echo 'data<<EOF'
+            echo "$response"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
         env:
-          GITHUB_TOKEN: ${{ github.token }}  
+          BRANCH: ${{ github.event.pull_request.base.ref }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
       - name: Verify base branch
         run: |
           PR_BRANCH_ALIAS=$(echo $PR_DATA | jq -r '.["content"]' | base64 --decode | jq -r '.["extra"]["branch-alias"] | flatten | .[0]')
