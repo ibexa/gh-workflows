@@ -33,7 +33,7 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com>"
 
       - name: Inject slug/short variables
-        uses: rlespinasse/github-slug-action@v3.x
+        uses: rlespinasse/github-slug-action@v5
 
       - name: Get merge map
         id: map
