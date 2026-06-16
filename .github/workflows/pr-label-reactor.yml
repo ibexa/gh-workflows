@@ -19,12 +19,13 @@ jobs:
 
     - name: slack-send
       if: ${{ env.channel-id }}
-      env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-      uses: slackapi/slack-github-action@v1.26.0
+      uses: slackapi/slack-github-action@v3
       with:
-        channel-id: ${{ env.channel-id }}
-        slack-message: "${{ github.event.pull_request._links.html.href }} from @${{ github.event.pull_request.user.login }} is now ${{ github.event.label.name }}"
+        method: chat.postMessage
+        token: ${{ secrets.SLACK_BOT_TOKEN }}
+        payload: |
+          channel: ${{ env.channel-id }}
+          text: "${{ github.event.pull_request._links.html.href }} from @${{ github.event.pull_request.user.login }} is now ${{ github.event.label.name }}"
 
   unlabeler:
     if: github.event.action == 'unlabeled'
