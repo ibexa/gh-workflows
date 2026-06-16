@@ -3,18 +3,29 @@ name: Upmerge branch (callee)
 on:
   workflow_call:
     secrets:
-      robot-token:
-        description: 'A PAT token used by the app/robot'
+      AUTOMATION_CLIENT_ID:
+        description: 'GitHub App ID'
+        required: true
+      AUTOMATION_CLIENT_SECRET:
+        description: 'GitHub App private key'
         required: true
 
 jobs:
   merge:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App Token
+        uses: actions/create-github-app-token@v3
+        id: generate_token
+        with:
+          client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+          owner: ${{ github.repository_owner }}
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.robot-token }}
+          token: ${{ steps.generate_token.outputs.token }}
 
       - name: Set environment
         run: |
@@ -38,7 +49,7 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
         env:
-          GITHUB_TOKEN: ${{ secrets.robot-token }}
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
       # Parse json and find destination branch and repository
       - name: Set variables
@@ -63,8 +74,7 @@ jobs:
         with:
           ref: ${{ env.DEST_BRANCH }}
           fetch-depth: 0
-          persist-credentials: false
-          token: ${{ secrets.robot-token }}
+          token: ${{ steps.generate_token.outputs.token }}
 
       - name: Perform Upmerge of ${{ env.SOURCE_BRANCH }} to ${{ env.DEST_BRANCH }}
         if: ${{ steps.destinations.outputs.destination }}
@@ -73,7 +83,5 @@ jobs:
 
       - name: Push changes
         if: ${{ steps.destinations.outputs.destination }}
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.robot-token }}
-          branch: ${{ env.DEST_BRANCH }}
+        run: |
+          git push origin "HEAD:${DEST_BRANCH}"
