@@ -15,14 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App Token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: generate_token
         with:
           client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
           owner: ${{ github.repository_owner }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           token: ${{ steps.generate_token.outputs.token }}
@@ -33,7 +33,7 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com>"
 
       - name: Inject slug/short variables
-        uses: rlespinasse/github-slug-action@e6f261660910b273384c5c42b17a0217881b217a # v5
+        uses: rlespinasse/github-slug-action@e6f261660910b273384c5c42b17a0217881b217a # v5.6.0
 
       - name: Get merge map
         id: map
@@ -70,7 +70,7 @@ jobs:
 
       - name: Checkout code
         if: ${{ steps.destinations.outputs.destination }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ env.DEST_BRANCH }}
           fetch-depth: 0
