@@ -83,7 +83,33 @@ env:
     COMPOSER_CACHE_DIR: ~/.composer/cache
 
 jobs:
-    browser-tests:
+    setup-tests:
+        runs-on: ubuntu-latest
+        timeout-minutes: 1
+        steps:
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
+                 \"}}]}" >> $GITHUB_ENV
+            - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
+              name: Send notification about workflow result
+              uses: slackapi/slack-github-action@v1.23.0
+              with:
+                  payload: ${{ env.SLACK_PAYLOAD }}
+              env:
+                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+    playwright-tests:
+        needs: setup-tests
         runs-on: ubuntu-latest
         timeout-minutes: ${{ inputs.timeout }}
 
@@ -192,6 +218,13 @@ jobs:
             - name: Fix write permissions on project directory
               run: sudo chmod -R a+rwX ${HOME}/build/project
 
+            - name: Check cohesivo-playwright presence
+              run: |
+                echo "=== Checking vendor structure ==="
+                ls ${HOME}/build/project/vendor/ibexa/ | grep -E "cohesivo|admin" || echo "WARNING: expected packages not found"
+                echo "=== cohesivo-playwright contents ==="
+                ls ${HOME}/build/project/vendor/ibexa/cohesivo-playwright/ 2>/dev/null || echo "ERROR: cohesivo-playwright not found in vendor"
+
             - name: Install cohesivo-playwright dependencies and build
               run: |
                 cd ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
@@ -233,31 +266,3 @@ jobs:
                       /home/runner/build/project/vendor/ibexa/**/playwright-tests/playwright-report/
                       /home/runner/build/project/vendor/ibexa/**/playwright-tests/test-results/
                   retention-days: 14
-
-            - if: always() && github.event_name != 'pull_request'
-              name: Create Slack message variables
-              run: |
-                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
-
-            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
-              name: Create Slack message success variables
-              run: |
-                echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
-
-            - if: always() && github.event_name != 'pull_request'
-              name: Create Slack message
-              run: >
-                 echo "SLACK_PAYLOAD=
-                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
-                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
-                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
-                 \"}}]}" >> $GITHUB_ENV
-
-            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
-              name: Send notification about workflow result
-              uses: slackapi/slack-github-action@v1.23.0
-              with:
-                  payload: ${{ env.SLACK_PAYLOAD }}
-              env:
-                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
