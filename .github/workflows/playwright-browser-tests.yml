@@ -194,9 +194,9 @@ jobs:
 
             - name: Install cohesivo-playwright dependencies and build
               run: |
+                cd ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
                 npm ci
                 npm run build
-              working-directory: ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
 
             - name: Install per-package Playwright test dependencies
               run: |
@@ -209,12 +209,14 @@ jobs:
                 done
 
             - name: Install Playwright browsers
-              run: npx playwright install --with-deps chromium
-              working-directory: ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
+              run: |
+                cd ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
+                npx playwright install --with-deps chromium
 
             - name: Run Playwright tests
-              run: npm run test:all -- ${{ inputs.test-suite }}
-              working-directory: ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
+              run: |
+                cd ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
+                npm run test:all -- ${{ inputs.test-suite }}
               env:
                 APP_URL: http://localhost:8080
                 APP_EDITION: ${{ inputs.project-edition }}
