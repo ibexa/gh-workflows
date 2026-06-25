@@ -98,7 +98,7 @@ jobs:
         with:
           client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
-          owner: ibexa
+          owner: ${{ github.repository_owner }}
       - name: Get previous release tag based on type
         id: prevrelease
         uses: ibexa/version-logic-action@e15eb95abe03085d43bb35030a7fc9bb625ae7b7 # v1.3.2

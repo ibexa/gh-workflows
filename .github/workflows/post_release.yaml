@@ -18,7 +18,7 @@ jobs:
         with:
           client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
-          owner: ibexa
+          owner: ${{ github.repository_owner }}
 
       - name: Extract tag name
         id: tag
