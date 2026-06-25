@@ -54,15 +54,31 @@ jobs:
           id: destinations
           if: ${{ steps.map.outputs.data }}
           run: |
+            source_branch="${{ github.ref_name }}"
+
             cat > input.json <<'EOF'
             ${{ steps.map.outputs.data }}
             EOF
+
             jq -r '.["content"]' input.json | base64 --decode | jq -c . > map.json
-            echo Looking for destination for branch ${{ env.GITHUB_REF_SLUG }}
-            branch=$(jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)' map.json)
-            echo Destination branch found. It is ${branch}
-            repo=$(jq -r '.DEST' map.json)
+            echo "Looking for destination for branch ${source_branch}"
+            echo "Configured source branches: $(jq -r 'keys - ["DEST"] | join(", ")' map.json)"
+
+            branch=$(jq -r --arg source_branch "$source_branch" '.[$source_branch] // empty' map.json)
+            if [ -z "$branch" ]; then
+              echo "No cross-merge destination configured for branch ${source_branch}. Skipping cross-merge."
+              exit 0
+            fi
+
+            repo=$(jq -r '.DEST // empty' map.json)
+            if [ -z "$repo" ]; then
+              echo "::error::Cross-merge map for ${{ github.repository }} does not define DEST"
+              exit 1
+            fi
+
             destination=temp_${{ env.GITHUB_REF_SLUG }}_to_$branch
+            echo "Destination branch found. It is ${branch}"
+            echo "Destination repository: ${repo}"
             echo "branch=$branch" >> $GITHUB_OUTPUT
             echo "repo=$repo" >> $GITHUB_OUTPUT
             echo "destination=$destination" >> $GITHUB_OUTPUT
