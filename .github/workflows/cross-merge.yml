@@ -27,7 +27,20 @@ jobs:
           continue-on-error: true
           shell: bash
           run: |
-            response=$(gh api /repos/ibexa/cross-merge-map/contents/${{ github.repository }})
+            map_repository="ibexa/cross-merge-map"
+            map_path="${{ github.repository }}"
+
+            echo "Fetching cross-merge map for ${map_path}"
+            echo "Map repository: ${map_repository}"
+
+            gh api "/repos/${map_repository}" >/dev/null
+
+            if ! response=$(gh api "/repos/${map_repository}/contents/${map_path}" 2>&1); then
+              echo "No cross-merge map found for ${map_path}. Skipping cross-merge."
+              echo "${response}"
+              exit 0
+            fi
+
             {
               echo 'data<<EOF'
               echo "$response"
