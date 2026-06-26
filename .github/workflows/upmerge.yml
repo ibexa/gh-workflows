@@ -60,10 +60,17 @@ jobs:
           ${{ steps.map.outputs.data }}
           EOF
           jq -r '.["content"]' input.json | base64 --decode | jq -c . > map.json
-          branch=${{ env.GITHUB_REF_SLUG }}
-          echo Looking for destination for branch $branch
-          destination=$(jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)' map.json)
-          echo Destination branch found. It is ${destination} branch
+          branch="${{ env.GITHUB_REF_SLUG }}"
+          echo "Looking for destination for branch ${branch}"
+          echo "Configured source branches: $(jq -r 'keys | join(", ")' map.json)"
+
+          destination=$(jq -r --arg branch "$branch" '.[$branch] // empty' map.json)
+          if [ -z "$destination" ]; then
+            echo "No upmerge destination configured for branch ${branch}. Skipping upmerge."
+            exit 0
+          fi
+
+          echo "Destination branch found. It is ${destination} branch"
           echo "SOURCE_BRANCH=$branch" >> $GITHUB_ENV
           echo "DEST_BRANCH=$destination" >> $GITHUB_ENV
           echo "destination=$destination" >> $GITHUB_OUTPUT
