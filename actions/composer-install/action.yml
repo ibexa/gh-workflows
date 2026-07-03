@@ -28,6 +28,10 @@ inputs:
     composer-options:
         description: 'Additional options to pass to composer'
         required: false
+    ci-scripts-ref:
+        description: "The branch/ref from ibexa/ci-scripts repository that should be used"
+        required: false
+        default: "main"
 
 runs:
     using: "composite"
@@ -78,6 +82,7 @@ runs:
             uses: ibexa/gh-workflows/actions/composer-audit-ignore@main
             with:
                 php-version: ${{ steps.setup_php.outputs.php-version }}
+                ci-scripts-ref: ${{ inputs.ci-scripts-ref }}
 
         -   uses: ramsey/composer-install@v4
             with:
