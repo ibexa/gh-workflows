@@ -232,6 +232,7 @@ jobs:
                 LAMBDATEST_USERNAME: "${{ secrets.LAMBDATEST_USERNAME }}"
                 LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
                 INSTALL_CONNECTOR_QUABLE: ${{ inputs.install-connector-quable }}
+                CI_SCRIPTS_REF: ${{ inputs.ci-scripts-branch }}
 
             - if: startsWith(steps.project-version.outputs.version, 'v')
               name: Set up whole project using a stable release
@@ -246,6 +247,7 @@ jobs:
                 LAMBDATEST_USERNAME: "${{ secrets.LAMBDATEST_USERNAME }}"
                 LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
                 INSTALL_CONNECTOR_QUABLE: ${{ inputs.install-connector-quable }}
+                CI_SCRIPTS_REF: ${{ inputs.ci-scripts-branch }}
 
             - if: inputs.use-compatibility-layer
               name: Set up compatibility-layer
