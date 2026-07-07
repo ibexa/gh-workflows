@@ -12,24 +12,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-        - uses: actions/checkout@v3
+        - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
           with:
             fetch-depth: 0
             token: ${{ secrets.robot-token }}
 
         - name: Inject slug/short variables
-          uses: rlespinasse/github-slug-action@v3.x
+          uses: rlespinasse/github-slug-action@e6f261660910b273384c5c42b17a0217881b217a # v5.6.0
 
         - name: Get merge map
-          uses: octokit/request-action@v2.x
           id: map
           # Allow failures to be ignored.
           # We will consider output as empty
           continue-on-error: true
-          with:
-            owner: ibexa
-            repo: cross-merge-map
-            route: /repos/{owner}/{repo}/contents/${{ github.repository }}
+          shell: bash
+          run: |
+            map_repository="ibexa/cross-merge-map"
+            map_path="${{ github.repository }}"
+
+            echo "Fetching cross-merge map for ${map_path}"
+            echo "Map repository: ${map_repository}"
+
+            gh api "/repos/${map_repository}" >/dev/null
+
+            if ! response=$(gh api "/repos/${map_repository}/contents/${map_path}" 2>&1); then
+              echo "No cross-merge map found for ${map_path}. Skipping cross-merge."
+              echo "${response}"
+              exit 0
+            fi
+
+            {
+              echo 'data<<EOF'
+              echo "$response"
+              echo EOF
+            } >> "$GITHUB_OUTPUT"
           env:
             GITHUB_TOKEN: ${{ secrets.robot-token }}
 
@@ -38,15 +54,31 @@ jobs:
           id: destinations
           if: ${{ steps.map.outputs.data }}
           run: |
+            source_branch="${{ github.ref_name }}"
+
             cat > input.json <<'EOF'
             ${{ steps.map.outputs.data }}
             EOF
+
             jq -r '.["content"]' input.json | base64 --decode | jq -c . > map.json
-            echo Looking for destination for branch ${{ env.GITHUB_REF_SLUG }}
-            branch=$(jq -r '.["${{ env.GITHUB_REF_SLUG }}"] | select (.!=null)' map.json)
-            echo Destination branch found. It is ${branch}
-            repo=$(jq -r '.DEST' map.json)
+            echo "Looking for destination for branch ${source_branch}"
+            echo "Configured source branches: $(jq -r 'keys - ["DEST"] | join(", ")' map.json)"
+
+            branch=$(jq -r --arg source_branch "$source_branch" '.[$source_branch] // empty' map.json)
+            if [ -z "$branch" ]; then
+              echo "No cross-merge destination configured for branch ${source_branch}. Skipping cross-merge."
+              exit 0
+            fi
+
+            repo=$(jq -r '.DEST // empty' map.json)
+            if [ -z "$repo" ]; then
+              echo "::error::Cross-merge map for ${{ github.repository }} does not define DEST"
+              exit 1
+            fi
+
             destination=temp_${{ env.GITHUB_REF_SLUG }}_to_$branch
+            echo "Destination branch found. It is ${branch}"
+            echo "Destination repository: ${repo}"
             echo "branch=$branch" >> $GITHUB_OUTPUT
             echo "repo=$repo" >> $GITHUB_OUTPUT
             echo "destination=$destination" >> $GITHUB_OUTPUT

@@ -24,7 +24,7 @@ jobs:
       - name: Set Environment
         run: |
           echo "BUILD_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       # load current composer.lock
       - id: currentLock
@@ -35,20 +35,20 @@ jobs:
       - name: Get previous last full release
         id: prevfull
         run: |
-          OUT=$(hub api /repos/${{ github.repository }}/releases | jq -r '[.[] | select(.tag_name | test("^(?!.*alpha|.*beta|.*rc).*$")) | .tag_name] | sort_by(.) | last')
+          OUT=$(gh api --paginate "/repos/${{ github.repository }}/releases" | jq -r -s 'flatten | [.[] | select(.tag_name | test("^(?!.*alpha|.*beta|.*rc).*$")) | .tag_name] | sort_by(.) | last')
           echo "tag=$( echo "$OUT" )" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get previous release tag based on type
         id: prevrelease
-        uses: ibexa/version-logic-action@master
+        uses: ibexa/version-logic-action@e15eb95abe03085d43bb35030a7fc9bb625ae7b7 # v1.3.2
         with:
           currentTag: ${{ env.BUILD_TAG }}
           prevFullTag: ${{ steps.prevfull.outputs.tag }}
 
       # checkout previous tag
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ steps.prevrelease.outputs.previousTag }}
 
@@ -94,25 +94,25 @@ jobs:
           echo "BUILD_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
       - name: Generate token
         id: generate_token
-        uses: tibdex/github-app-token@v1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app_id: ${{ secrets.AUTOMATION_CLIENT_ID }}
-          installation_id: ${{ secrets.AUTOMATION_CLIENT_INSTALLATION }}
-          private_key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+          client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+          owner: ${{ github.repository_owner }}
       - name: Get previous release tag based on type
         id: prevrelease
-        uses: ibexa/version-logic-action@master
+        uses: ibexa/version-logic-action@e15eb95abe03085d43bb35030a7fc9bb625ae7b7 # v1.3.2
         with:
           currentTag: ${{ env.BUILD_TAG }}
 
       - name: Checkout Generator
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ibexa/changelog-generator-action
           ref: v2
 
       - name: Setup Python environment
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.x'
 
@@ -147,13 +147,13 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
       - name: Archive markdown
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: changelogs
           path: generator_output
 
       - name: Check out wiki
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: '${{ github.repository }}.wiki'
           path: 'wiki'
@@ -177,10 +177,11 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: zendesk/action-gh-release@v2
-        with:
-          tag_name: ${{ env.BUILD_TAG }}
-          body: |
-            The full changelog for this release is available at: https://github.com/${{ github.repository }}/wiki/Changelog-${{ env.BUILD_TAG }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cat > release_notes.md <<'EOF'
+          The full changelog for this release is available at: https://github.com/${{ github.repository }}/wiki/Changelog-${{ env.BUILD_TAG }}
+          EOF
+          gh release create "$BUILD_TAG" --title "$BUILD_TAG" --notes-file release_notes.md

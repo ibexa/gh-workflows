@@ -19,16 +19,19 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae # v3.0.0 as of 25.03.2026
-        name: Get list of assignees
+      - name: Get list of assignees
         id: assignees
         # Allow failures to be ignored.
         # We will consider output as empty
         continue-on-error: true
-        with:
-          owner: ibexa
-          repo: pr-assignees
-          route: /repos/{owner}/{repo}/contents/${{ github.repository }}/maintainers
+        shell: bash
+        run: |
+          response=$(gh api /repos/ibexa/pr-assignees/contents/${{ github.repository }}/maintainers)
+          {
+            echo 'data<<EOF'
+            echo "$response"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
         env:
           GITHUB_TOKEN: ${{ secrets.robot-token }}
 

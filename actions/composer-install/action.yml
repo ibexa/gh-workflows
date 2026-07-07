@@ -37,15 +37,15 @@ runs:
     using: "composite"
     steps:
         -   if: ${{ inputs.gh-client-id != '' && inputs.gh-client-secret != '' }}
-            uses: actions/create-github-app-token@v2
+            uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
             id: generate_token
             with:
-                app-id: ${{ inputs.gh-client-id }}
+                client-id: ${{ inputs.gh-client-id }}
                 private-key: ${{ inputs.gh-client-secret }}
                 owner: ${{ github.repository_owner }}
 
         -   name: Setup PHP Action
-            uses: shivammathur/setup-php@v2
+            uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
             id: setup_php
             with:
                 php-version: ${{ matrix.php }}
@@ -84,7 +84,7 @@ runs:
                 php-version: ${{ steps.setup_php.outputs.php-version }}
                 ci-scripts-ref: ${{ inputs.ci-scripts-ref }}
 
-        -   uses: ramsey/composer-install@v4
+        -   uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
             with:
                 dependency-versions: highest
                 composer-options: ${{ inputs.composer-options }}

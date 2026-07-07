@@ -11,20 +11,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set Environment
         run: |
           echo "BUILD_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
 
       - name: Get previous release tag based on type
         id: prevrelease
-        uses: ibexa/version-logic-action@master
+        uses: ibexa/version-logic-action@e15eb95abe03085d43bb35030a7fc9bb625ae7b7 # v1.3.2
         with:
           currentTag: ${{ env.BUILD_TAG }}
 
       - name: Generate changelog
         id: changelog
-        uses: ibexa/changelog-generator-action@v2
+        uses: ibexa/changelog-generator-action@v2 # referencing `v2` branch, not tag. Do not change unless new tag exists
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           jira_token: ${{ secrets.JIRA_TOKEN }}
@@ -37,10 +37,10 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: zendesk/action-gh-release@v2
-        with:
-          tag_name: ${{ env.BUILD_TAG }}
-          body: |
-            ${{ steps.changelog.outputs.changelog }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > release_notes.md <<'EOF'
+          ${{ steps.changelog.outputs.changelog }}
+          EOF
+          gh release create "$BUILD_TAG" --title "$BUILD_TAG" --notes-file release_notes.md
