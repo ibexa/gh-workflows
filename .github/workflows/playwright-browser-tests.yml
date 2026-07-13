@@ -7,8 +7,13 @@ on:
                 description: "Project edition to set up: oss, headless, experience, commerce"
                 required: true
                 type: string
+            test-package:
+                description: "Run tests of a single package (e.g. admin-ui). Empty = all packages with tests (edition mode)."
+                required: false
+                type: string
+                default: ''
             test-suite:
-                description: "Extra Playwright CLI args passed to test:all (e.g. --grep Trash)"
+                description: "Extra Playwright CLI args (e.g. --grep Trash)"
                 required: false
                 type: string
                 default: ''
@@ -37,6 +42,16 @@ on:
                 required: false
                 type: string
                 default: "main"
+            cohesivo-version:
+                description: "Composer version constraint for ibexa/cohesivo-playwright. Empty = same as the project version (branch alias), so 4.6/5.0/6.0 branches get the matching library version."
+                required: false
+                type: string
+                default: ""
+            app-url:
+                description: "URL under which the app is reachable from the runner host"
+                required: false
+                type: string
+                default: "http://localhost:8080"
             test-setup-phase-1:
                 description: "Behat suite to run before Playwright tests for data seeding - phase 1"
                 required: false
@@ -47,6 +62,11 @@ on:
                 required: false
                 type: string
                 default: ""
+            job-count:
+                description: "Number of jobs that will run the tests in parallel (Playwright --shard)"
+                required: false
+                type: number
+                default: 1
             send-success-notification:
                 description: "Send a Slack notification when tests pass"
                 required: false
@@ -83,10 +103,30 @@ env:
     COMPOSER_CACHE_DIR: ~/.composer/cache
 
 jobs:
-    setup-tests:
+    setup-jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 1
+        outputs:
+            matrix: ${{ steps.generate-matrix.outputs.matrix }}
+            job-count: ${{ steps.generate-matrix.outputs.job-count }}
         steps:
+            - name: Set job count for builds
+              run: echo "job_count=${{ inputs.job-count }}" >> $GITHUB_ENV
+            - name: Limit job-count to max 3 for PRs
+              if: github.event_name == 'pull_request'
+              run: |
+                if [[ "$job_count" -gt 3 ]] ; then
+                  job_count=3
+                fi
+                echo "job_count=$job_count" >> $GITHUB_ENV
+              env:
+                job_count: ${{ env.job_count }}
+            - name: Generate matrix
+              id: generate-matrix
+              run: |
+                matrix=$(jq -cn --argjson n "$job_count" '{offset: [range(0; $n)]}')
+                echo "matrix=$matrix" >> $GITHUB_OUTPUT
+                echo "job-count=$job_count" >> $GITHUB_OUTPUT
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
               run: |
@@ -109,9 +149,12 @@ jobs:
                   SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
     playwright-tests:
-        needs: setup-tests
+        needs: setup-jobs
         runs-on: ubuntu-latest
         timeout-minutes: ${{ inputs.timeout }}
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJson(needs.setup-jobs.outputs.matrix) }}
 
         steps:
             - uses: actions/checkout@v4
@@ -122,9 +165,6 @@ jobs:
                 if [[ "$version" == "" ]] ; then
                     echo "Input project version not set, taking the value from composer.json"
                     version=$(cat composer.json | jq -r '.extra | ."branch-alias" | .[]')
-                fi
-                if [[ "$version" == "3.3.x-dev" ]] ; then
-                    version="^3.3.x-dev"
                 fi
                 echo "version=$version" >> $GITHUB_OUTPUT
               env:
@@ -146,11 +186,14 @@ jobs:
 
             - name: Generate token
               id: generate_token
+              if: env.AUTOMATION_CLIENT_ID != ''
               uses: actions/create-github-app-token@v2
               with:
                   app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
                   private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
                   owner: ibexa
+              env:
+                  AUTOMATION_CLIENT_ID: ${{ secrets.AUTOMATION_CLIENT_ID }}
 
             - if: env.SATIS_NETWORK_KEY != ''
               name: Add composer keys for private packagist
@@ -192,14 +235,30 @@ jobs:
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
 
             - if: inputs.test-setup-phase-2 != ''
               name: Run second phase of tests setup
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
+
+            - name: Install ibexa/cohesivo-playwright
+              run: |
+                cd ${HOME}/build/project
+                COHESIVO_VERSION="${{ inputs.cohesivo-version }}"
+                if [ -z "$COHESIVO_VERSION" ]; then
+                  COHESIVO_VERSION="${{ steps.project-version.outputs.version }}"
+                fi
+                echo "Installing ibexa/cohesivo-playwright:$COHESIVO_VERSION"
+                # TODO: drop the vcs repository once ibexa/cohesivo-playwright is published on updates.ibexa.co
+                docker compose --env-file=.env exec -T --user www-data -e GITHUB_TOKEN -e COHESIVO_VERSION app sh -c '
+                  composer config repositories.cohesivo-playwright vcs https://github.com/ibexa/cohesivo-playwright &&
+                  if [ -n "$GITHUB_TOKEN" ]; then composer config github-oauth.github.com "$GITHUB_TOKEN"; fi &&
+                  composer require --dev "ibexa/cohesivo-playwright:$COHESIVO_VERSION" --no-scripts --no-plugins'
+              env:
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
@@ -217,13 +276,6 @@ jobs:
 
             - name: Fix write permissions on project directory
               run: sudo chmod -R a+rwX ${HOME}/build/project
-
-            - name: Check cohesivo-playwright presence
-              run: |
-                echo "=== Checking vendor structure ==="
-                ls ${HOME}/build/project/vendor/ibexa/ | grep -E "cohesivo|admin" || echo "WARNING: expected packages not found"
-                echo "=== cohesivo-playwright contents ==="
-                ls ${HOME}/build/project/vendor/ibexa/cohesivo-playwright/ 2>/dev/null || echo "ERROR: cohesivo-playwright not found in vendor"
 
             - name: Install cohesivo-playwright dependencies and build
               run: |
@@ -249,9 +301,17 @@ jobs:
             - name: Run Playwright tests
               run: |
                 cd ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
-                npm run test:all -- ${{ inputs.test-suite }}
+                EXTRA_ARGS="${{ inputs.test-suite }}"
+                if [ "${{ needs.setup-jobs.outputs.job-count }}" -gt 1 ]; then
+                  EXTRA_ARGS="$EXTRA_ARGS --shard=$(( ${{ matrix.offset }} + 1 ))/${{ needs.setup-jobs.outputs.job-count }} --pass-with-no-tests"
+                fi
+                if [ -n "${{ inputs.test-package }}" ]; then
+                  npm run test:package -- ${{ inputs.test-package }} $EXTRA_ARGS
+                else
+                  npm run test:all -- $EXTRA_ARGS
+                fi
               env:
-                APP_URL: http://localhost:8080
+                APP_URL: ${{ inputs.app-url }}
                 APP_EDITION: ${{ inputs.project-edition }}
                 ADMIN_LOGIN: ${{ secrets.ADMIN_LOGIN || 'admin' }}
                 ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'publish' }}
@@ -261,8 +321,41 @@ jobs:
               if: always()
               uses: actions/upload-artifact@v4
               with:
-                  name: playwright-report-${{ inputs.project-edition }}
+                  name: playwright-report-${{ inputs.project-edition }}-${{ matrix.offset }}
                   path: |
                       /home/runner/build/project/vendor/ibexa/**/playwright-tests/playwright-report/
                       /home/runner/build/project/vendor/ibexa/**/playwright-tests/test-results/
+                      /home/runner/build/project/vendor/ibexa/cohesivo-playwright/playwright-report/
+                      /home/runner/build/project/vendor/ibexa/cohesivo-playwright/test-results/
                   retention-days: 14
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+                JOB_NUMBER=$(expr ${{ matrix.offset }} + 1)
+                echo "JOB_NUMBER=$JOB_NUMBER" >> $GITHUB_ENV
+
+            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
+              name: Create Slack message success variables
+              run: |
+                echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) | Playwright |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
+                 $JOB_NUMBER/${{ needs.setup-jobs.outputs.job-count }}
+                 \"}}]}" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
+              name: Send notification about workflow result
+              uses: slackapi/slack-github-action@v1.23.0
+              with:
+                  payload: ${{ env.SLACK_PAYLOAD }}
+              env:
+                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
