@@ -247,9 +247,9 @@ jobs:
             - name: Install ibexa/cohesivo-playwright
               run: |
                 cd ${HOME}/build/project
-                COHESIVO_VERSION="${{ inputs.cohesivo-version }}"
+                export COHESIVO_VERSION="${{ inputs.cohesivo-version }}"
                 if [ -z "$COHESIVO_VERSION" ]; then
-                  COHESIVO_VERSION="${{ steps.project-version.outputs.version }}"
+                  export COHESIVO_VERSION="${{ steps.project-version.outputs.version }}"
                 fi
                 echo "Installing ibexa/cohesivo-playwright:$COHESIVO_VERSION"
                 # TODO: drop the vcs repository once ibexa/cohesivo-playwright is published on updates.ibexa.co
