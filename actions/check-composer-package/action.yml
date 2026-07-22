@@ -1,0 +1,52 @@
+name: "Check that a package version is available in a Composer repository"
+author: 'Ibexa AS'
+description: >-
+    Checks that a package version is available in a Composer repository
+    (Packagist by default, or a Satis instance via repository-url + auth).
+    With retry enabled, re-checks on the retry-schedule delays before
+    failing — for packages that are being published while the caller runs.
+
+inputs:
+    package:
+        description: 'Composer package name, e.g. ibexa/experience'
+        required: true
+    version:
+        description: 'Version to look for, as published (e.g. v4.6.30)'
+        required: true
+    repository-url:
+        description: 'Composer repository URL'
+        required: false
+        default: 'https://repo.packagist.org'
+    auth-key:
+        description: 'HTTP basic auth user (e.g. Satis network key)'
+        required: false
+    auth-token:
+        description: 'HTTP basic auth password (e.g. Satis network token)'
+        required: false
+    retry:
+        description: >-
+            Whether to re-check on the retry-schedule delays before failing.
+            Enable for packages being published while the caller runs; leave
+            disabled when absence means a mistake that should fail fast.
+        required: false
+        default: 'false'
+    retry-schedule:
+        description: 'Space-separated delays in seconds between re-checks (used when retry is enabled)'
+        required: false
+        default: '30 60 120 300 300 300 300 300'
+
+runs:
+    using: "composite"
+    steps:
+        -   name: Check package version availability
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/check-composer-package.bash"
+            env:
+                PACKAGE: ${{ inputs.package }}
+                VERSION: ${{ inputs.version }}
+                REPOSITORY_URL: ${{ inputs.repository-url }}
+                AUTH_KEY: ${{ inputs.auth-key }}
+                AUTH_TOKEN: ${{ inputs.auth-token }}
+                RETRY: ${{ inputs.retry }}
+                RETRY_SCHEDULE: ${{ inputs.retry-schedule }}
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
