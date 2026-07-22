@@ -19,6 +19,18 @@ jobs:
             - name: Run bats tests
               run: bats tests/
 
+    shellcheck:
+        name: Shellcheck
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install shellcheck
+              run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+            - name: Run shellcheck on action scripts
+              run: shellcheck actions/*/*.bash
+
     actionlint:
         name: Actionlint
         runs-on: ubuntu-latest
@@ -30,10 +42,12 @@ jobs:
                   VERSION: 1.7.7
                   SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
               run: |
-                  curl -sfL -o actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+                  curl -sfL --proto '=https' -o actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
                   echo "${SHA256}  actionlint.tar.gz" | sha256sum -c -
                   tar xzf actionlint.tar.gz actionlint
                   rm actionlint.tar.gz
 
             - name: Run actionlint
-              run: ./actionlint -color
+              # The shellcheck integration is disabled until the pre-existing
+              # workflows are made shellcheck-clean.
+              run: ./actionlint -color -shellcheck=
