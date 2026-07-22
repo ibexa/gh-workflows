@@ -26,5 +26,5 @@ if check; then
     exit 0
 fi
 
-echo "::error::${PACKAGE}:${VERSION} is not available in ${REPOSITORY_URL%/}"
+echo "::error::${PACKAGE}:${VERSION} is not available in ${REPOSITORY_URL%/}" >&2
 exit 1

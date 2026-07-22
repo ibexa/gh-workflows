@@ -6,13 +6,13 @@ set -euo pipefail
 #
 # Required environment: VERSION
 
-SUFFIX=$(echo "${VERSION}" | cut -d '-' -f 2)
-SET_STABILITY="composer config minimum-stability"
-$SET_STABILITY --unset
+SUFFIX="${VERSION#*-}"
+composer config minimum-stability --unset
 composer config prefer-stable --unset
-case $SUFFIX in
+case ${SUFFIX} in
     alpha*|beta*|rc*) composer config prefer-stable true ;;&
-    alpha*) $SET_STABILITY alpha ;;
-    beta*) $SET_STABILITY beta ;;
-    rc*) $SET_STABILITY rc ;;
+    alpha*) composer config minimum-stability alpha ;;
+    beta*) composer config minimum-stability beta ;;
+    rc*) composer config minimum-stability rc ;;
+    *) ;; # stable version or unrecognized suffix: leave stability unset
 esac

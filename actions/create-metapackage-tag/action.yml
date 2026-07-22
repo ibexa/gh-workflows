@@ -110,7 +110,7 @@ runs:
         -   name: Composer update
             shell: bash
             run: |
-                composer update --no-scripts --no-plugins --no-install
+                composer update --no-scripts --no-plugins --no-install # NOSONAR -- regenerating the lock file is the purpose of this action
                 composer validate
 
         -   name: Commit, tag and push
