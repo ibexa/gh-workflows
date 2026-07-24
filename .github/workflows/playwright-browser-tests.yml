@@ -43,7 +43,7 @@ on:
                 type: string
                 default: "main"
             cohesivo-version:
-                description: "Composer version constraint for ibexa/cohesivo-playwright. Empty = same as the project version (branch alias), so 4.6/5.0/6.0 branches get the matching library version."
+                description: "Composer version constraint for ibexa/cohesivo-playwright. Empty = match the project version (branch alias). Playwright is 5.0+ only — there is no 4.6 branch of the library, so 4.6 projects must not call this workflow."
                 required: false
                 type: string
                 default: ""
@@ -52,16 +52,6 @@ on:
                 required: false
                 type: string
                 default: "http://localhost:8080"
-            test-setup-phase-1:
-                description: "Behat suite to run before Playwright tests for data seeding - phase 1"
-                required: false
-                type: string
-                default: ""
-            test-setup-phase-2:
-                description: "Behat suite to run before Playwright tests for data seeding - phase 2"
-                required: false
-                type: string
-                default: ""
             job-count:
                 description: "Number of jobs that will run the tests in parallel (Playwright --shard)"
                 required: false
@@ -96,6 +86,10 @@ on:
                 required: false
 
 env:
+    # Symfony env the app boots in — the established platform test env (provided by ibexa/behat),
+    # same as the Behat pipeline and expected by the shared project-setup script. It configures
+    # the app, not Playwright (the tests just hit it over HTTP). There is no dedicated "playwright"
+    # env; dropping this would fall back to "dev", so it stays as-is.
     APP_ENV: behat
     APP_DEBUG: 1
     APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
@@ -229,26 +223,16 @@ jobs:
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
 
-            - if: inputs.test-setup-phase-1 != ''
-              name: Run first phase of tests setup
-              run: |
-                cd ${HOME}/build/project
-                docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
-
-            - if: inputs.test-setup-phase-2 != ''
-              name: Run second phase of tests setup
-              run: |
-                cd ${HOME}/build/project
-                docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
+            # Data seeding is done per-test through IbexaApiClient (REST) in the packages'
+            # beforeAll hooks — no Behat setup phase here, so this workflow has no Behat dependency.
 
             - name: Install ibexa/cohesivo-playwright
               run: |
                 cd ${HOME}/build/project
-                export COHESIVO_VERSION="${{ inputs.cohesivo-version }}"
+                # empty cohesivo-version → match the project version (branch alias), so a 5.0/6.0
+                # branch installs the matching library version. (No 4.6 branch of the library exists.)
                 if [ -z "$COHESIVO_VERSION" ]; then
-                  export COHESIVO_VERSION="${{ steps.project-version.outputs.version }}"
+                  COHESIVO_VERSION="$PROJECT_VERSION"
                 fi
                 echo "Installing ibexa/cohesivo-playwright:$COHESIVO_VERSION"
                 # TODO: drop the vcs repository once ibexa/cohesivo-playwright is published on updates.ibexa.co
@@ -258,6 +242,8 @@ jobs:
                   composer require --dev "ibexa/cohesivo-playwright:$COHESIVO_VERSION" --no-scripts --no-plugins'
               env:
                 GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+                COHESIVO_VERSION: ${{ inputs.cohesivo-version }}
+                PROJECT_VERSION: ${{ steps.project-version.outputs.version }}
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
@@ -298,34 +284,45 @@ jobs:
                 npx playwright install --with-deps chromium
 
             - name: Run Playwright tests
+              # inputs are passed via env (not interpolated into the script) to avoid shell injection
               run: |
                 cd ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
-                EXTRA_ARGS="${{ inputs.test-suite }}"
-                if [ "${{ needs.setup-jobs.outputs.job-count }}" -gt 1 ]; then
-                  EXTRA_ARGS="$EXTRA_ARGS --shard=$(( ${{ matrix.offset }} + 1 ))/${{ needs.setup-jobs.outputs.job-count }} --pass-with-no-tests"
+                EXTRA_ARGS="$TEST_SUITE"
+                if [ "$JOB_COUNT" -gt 1 ]; then
+                  EXTRA_ARGS="$EXTRA_ARGS --shard=$(( SHARD_OFFSET + 1 ))/$JOB_COUNT --pass-with-no-tests"
                 fi
-                if [ -n "${{ inputs.test-package }}" ]; then
-                  npm run test:package -- ${{ inputs.test-package }} $EXTRA_ARGS
+                if [ -n "$TEST_PACKAGE" ]; then
+                  npm run test:package -- "$TEST_PACKAGE" $EXTRA_ARGS
                 else
                   npm run test:all -- $EXTRA_ARGS
                 fi
               env:
+                TEST_SUITE: ${{ inputs.test-suite }}
+                TEST_PACKAGE: ${{ inputs.test-package }}
+                JOB_COUNT: ${{ needs.setup-jobs.outputs.job-count }}
+                SHARD_OFFSET: ${{ matrix.offset }}
                 APP_URL: ${{ inputs.app-url }}
                 APP_EDITION: ${{ inputs.project-edition }}
                 ADMIN_LOGIN: ${{ secrets.ADMIN_LOGIN || 'admin' }}
                 ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'publish' }}
                 CI: true
 
+            - name: Report timestamp
+              if: always()
+              id: report-ts
+              run: echo "value=$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+
             - name: Upload Playwright report
               if: always()
               uses: actions/upload-artifact@v4
               with:
-                  name: playwright-report-${{ inputs.project-edition }}-${{ matrix.offset }}
+                  # edition + shard make it unique within a run; UTC timestamp tells runs apart
+                  name: playwright-report-${{ inputs.project-edition }}-shard${{ matrix.offset }}-${{ steps.report-ts.outputs.value }}
+                  # `**` matches any depth, so one pair of globs covers both the package suites
+                  # (<pkg>/tests/playwright-tests/) and cohesivo's own tests (cohesivo-playwright/)
                   path: |
-                      /home/runner/build/project/vendor/ibexa/**/playwright-tests/playwright-report/
-                      /home/runner/build/project/vendor/ibexa/**/playwright-tests/test-results/
-                      /home/runner/build/project/vendor/ibexa/cohesivo-playwright/playwright-report/
-                      /home/runner/build/project/vendor/ibexa/cohesivo-playwright/test-results/
+                      /home/runner/build/project/vendor/ibexa/**/playwright-report/
+                      /home/runner/build/project/vendor/ibexa/**/test-results/
                   retention-days: 14
 
             - if: always() && github.event_name != 'pull_request'
