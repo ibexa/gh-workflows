@@ -141,12 +141,11 @@ jobs:
                  \"}}]}" >> $GITHUB_ENV
             - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
               name: Send notification about workflow result
-              uses: slackapi/slack-github-action@v1.23.0
+              uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
               with:
+                  webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  webhook-type: incoming-webhook
                   payload: ${{ env.SLACK_PAYLOAD }}
-              env:
-                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
     playwright-tests:
         needs: setup-jobs
@@ -353,9 +352,8 @@ jobs:
 
             - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
               name: Send notification about workflow result
-              uses: slackapi/slack-github-action@v1.23.0
+              uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
               with:
+                  webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  webhook-type: incoming-webhook
                   payload: ${{ env.SLACK_PAYLOAD }}
-              env:
-                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
