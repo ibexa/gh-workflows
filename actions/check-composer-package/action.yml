@@ -16,7 +16,7 @@ inputs:
     repository-url:
         description: 'Composer repository URL'
         required: false
-        default: 'https://repo.packagist.org'
+        default: 'https://repo.packagist.org' # or 'https://updates.ibexa.co' for private packages
     auth-key:
         description: 'HTTP basic auth user (e.g. Satis network key)'
         required: false
