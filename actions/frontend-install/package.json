@@ -1,0 +1,9 @@
+{
+    "name": "ibexa-frontend-install",
+    "description": "Dependencies of the ibexa/admin-ui TypeScript translation extractor, installed into vendor/ for backend test suites.",
+    "private": true,
+    "license": "UNLICENSED",
+    "dependencies": {
+        "@typescript-eslint/typescript-estree": "8.62.1"
+    }
+}
