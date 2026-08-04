@@ -1,0 +1,32 @@
+name: 'Install frontend dependencies required by backend tests'
+author: 'Ibexa AS'
+description: >-
+    Sets up Node.js and installs the npm packages that backend test suites need, using the
+    lockfile shipped with this action. Currently this is @typescript-eslint/typescript-estree,
+    used by the ibexa/admin-ui translation extractor to read Translator.trans() calls from
+    TypeScript sources. Add this action next to composer-install in packages that ship
+    .ts/.tsx files. Packages are exposed as node_modules/ in the repository root, which Node
+    searches both in ibexa/admin-ui itself and in packages having it in vendor/.
+
+inputs:
+    node-version:
+        description: 'Node.js version to set up'
+        required: false
+        default: '24'
+
+runs:
+    using: "composite"
+    steps:
+        -   uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+            with:
+                node-version: ${{ inputs.node-version }}
+
+        -   name: Install TypeScript translation extractor dependencies
+            shell: bash
+            run: |
+                npm ci --prefix "${GITHUB_ACTION_PATH}" --ignore-scripts
+
+                # Node looks for node_modules/ only in directories above the file importing them.
+                # The repository root is above the extractor script in every layout.
+                mkdir -p node_modules
+                cp -R "${GITHUB_ACTION_PATH}/node_modules/." node_modules/
