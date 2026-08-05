@@ -7,6 +7,10 @@ set -euo pipefail
 #
 # Required environment: VERSION, RELEASE_REPOSITORY, RELEASE_MAP, GITHUB_TOKEN
 
-gh api "/repos/${RELEASE_REPOSITORY}/contents/releases/${VERSION}/release.json" --jq '.content' \
-    | base64 --decode \
+if ! CONTENT=$(gh api "/repos/${RELEASE_REPOSITORY}/contents/releases/${VERSION}/release.json" --jq '.content'); then
+    echo "::error::Release definition releases/${VERSION}/release.json is not available in ${RELEASE_REPOSITORY}" >&2
+    exit 1
+fi
+
+base64 --decode <<< "${CONTENT}" \
     | jq '[ .[] | { (.packageName): (.targetVersion) } ] | add' > "${RELEASE_MAP}"
