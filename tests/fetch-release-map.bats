@@ -41,10 +41,15 @@ cat "$GH_RESPONSE"'
     grep -q 'gh api /repos/ibexa/release-maker/contents/releases/4.6.30/release.json --jq .content' "$GH_LOG"
 }
 
-@test "fails when gh fails" {
-    stub_command gh 'exit 1'
+@test "fails with an attributable error when the release definition is missing" {
+    stub_command gh '
+echo "gh: Not Found (HTTP 404)" >&2
+exit 1'
 
     run "$SCRIPT"
 
     [ "$status" -ne 0 ]
+    [[ "$output" == *'::error::Release definition releases/4.6.30/release.json is not available in ibexa/release-maker'* ]]
+    [[ "$output" != *'base64'* ]]
+    [ ! -e "$RELEASE_MAP" ]
 }
