@@ -1,0 +1,32 @@
+name: "Run frontend test suite with Yarn and dump diagnostics on failure"
+author: 'Ibexa AS'
+description: >-
+    Runs a Yarn script (`test` by default) while capturing its output.
+    When it fails, the log is inspected for known error signatures and the relevant
+    configuration is dumped, so that the failure is diagnosable from the CI log alone.
+
+inputs:
+    script:
+        description: 'Yarn script to run'
+        required: false
+        default: 'test'
+
+runs:
+    using: "composite"
+    steps:
+        -   name: 'Run Yarn script'
+            id: run_script
+            shell: bash
+            run: |
+                set -o pipefail
+                yarn $YARN_SCRIPT 2>&1 | tee "${RUNNER_TEMP}/yarn-output.log"
+            env:
+                YARN_SCRIPT: ${{ inputs.script }}
+
+        -   if: ${{ !cancelled() && steps.run_script.outcome == 'failure' }}
+            name: 'Dump diagnostics for known failures'
+            shell: bash
+            run: |
+                "${GITHUB_ACTION_PATH}/diagnose-failure.bash" "${RUNNER_TEMP}/yarn-output.log"
+            env:
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
