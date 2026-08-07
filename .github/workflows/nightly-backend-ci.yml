@@ -35,8 +35,7 @@ jobs:
               run: |
                   gh api --method POST \
                     "/repos/${{ matrix.repository }}/actions/workflows/backend-ci.yaml/dispatches" \
-                    -f ref="${{ matrix.branch }}"
-                    # Re-enable once Phase 0 adds the input to each backend-ci.yaml:
-                    # -f "inputs[send-success-notification]=false"
+                    -f ref="${{ matrix.branch }}" \
+                    -f "inputs[send-success-notification]=false"
               env:
                   GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
