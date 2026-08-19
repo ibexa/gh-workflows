@@ -1,0 +1,53 @@
+name: CI
+
+on:
+    push:
+        branches:
+            - main
+    pull_request: ~
+
+jobs:
+    bats:
+        name: Bats tests
+        runs-on: "ubuntu-26.04"
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install bats
+              run: sudo apt-get update && sudo apt-get install -y bats
+
+            - name: Run bats tests
+              run: bats tests/
+
+    shellcheck:
+        name: Shellcheck
+        runs-on: "ubuntu-26.04"
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install shellcheck
+              run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+            - name: Run shellcheck on action scripts
+              run: shellcheck actions/*/*.bash
+
+    actionlint:
+        name: Actionlint
+        runs-on: "ubuntu-26.04"
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install actionlint
+              env:
+                  VERSION: 1.7.12
+                  SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+              run: |
+                  curl -sfL --proto '=https' -o actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+                  echo "${SHA256}  actionlint.tar.gz" | sha256sum -c -
+                  tar xzf actionlint.tar.gz actionlint
+                  rm actionlint.tar.gz
+
+            - name: Run actionlint
+              # The shellcheck integration is disabled until the pre-existing
+              # workflows are made shellcheck-clean.
+              run: ./actionlint -color -shellcheck=

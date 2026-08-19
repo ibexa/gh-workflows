@@ -1,0 +1,124 @@
+name: "Create and push a metapackage release tag"
+author: 'Ibexa AS'
+description: >-
+    Sets metapackage dependency versions for a release — from the
+    releases/<version>/release.json definition in the release repository —
+    updates composer.lock, and, when real-op is enabled, commits, tags and
+    pushes the result using a GitHub App token. The caller must check out
+    the repository first (actions/checkout with persist-credentials: false).
+
+inputs:
+    version:
+        description: 'Version to release, without the v prefix (x.y.z-abcN e.g. 4.5.6-beta1)'
+        required: true
+    pin-packages:
+        description: 'Newline-separated composer package names to pin to the release version'
+        required: true
+    real-op:
+        description: 'Whether to commit, tag and push the changes'
+        required: false
+        default: 'false'
+    git-push-args:
+        description: 'Additional arguments for git push, e.g. --force-with-lease'
+        required: false
+        default: ''
+    gh-client-id:
+        description: 'GitHub App client ID'
+        required: true
+    gh-client-secret:
+        description: 'GitHub App private key'
+        required: true
+    satis-network-key:
+        description: 'Satis Network Key'
+        required: true
+    satis-network-token:
+        description: 'Satis Network Token'
+        required: true
+    php-version:
+        description: 'PHP version used to run composer'
+        required: false
+        default: '8.3'
+    release-repository:
+        description: 'Repository holding the releases/<version>/release.json definitions'
+        required: false
+        default: 'ibexa/release-maker'
+
+runs:
+    using: "composite"
+    steps:
+        -   name: Setup PHP Action
+            uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+            with:
+                php-version: ${{ inputs.php-version }}
+                coverage: none
+                extensions: pdo_sqlite, gd
+
+        -   name: Generate token
+            id: generate_token
+            uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+            with:
+                client-id: ${{ inputs.gh-client-id }}
+                private-key: ${{ inputs.gh-client-secret }}
+                owner: ${{ github.repository_owner }}
+
+        -   name: Get and process release information
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/fetch-release-map.bash"
+            env:
+                VERSION: ${{ inputs.version }}
+                RELEASE_REPOSITORY: ${{ inputs.release-repository }}
+                RELEASE_MAP: ${{ runner.temp }}/release-map.json
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+
+        -   name: Set minimum stability
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/set-stability.bash"
+            env:
+                VERSION: ${{ inputs.version }}
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+
+        -   name: Pin packages to the release version
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/pin-packages.bash"
+            env:
+                VERSION: ${{ inputs.version }}
+                PIN_PACKAGES: ${{ inputs.pin-packages }}
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+
+        -   name: Patch composer require versions
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/patch-requires.bash"
+            env:
+                RELEASE_MAP: ${{ runner.temp }}/release-map.json
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+
+        -   name: Preview composer.json
+            shell: bash
+            run: cat composer.json
+
+        -   name: Add composer keys for private packagist
+            shell: bash
+            run: |
+                composer config http-basic.updates.ibexa.co "$SATIS_NETWORK_KEY" "$SATIS_NETWORK_TOKEN"
+                composer config github-oauth.github.com "$APP_GITHUB_TOKEN"
+            env:
+                SATIS_NETWORK_KEY: ${{ inputs.satis-network-key }}
+                SATIS_NETWORK_TOKEN: ${{ inputs.satis-network-token }}
+                APP_GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+        -   name: Composer update
+            shell: bash
+            run: |
+                composer update --no-scripts --no-plugins --no-install
+                composer validate
+
+        -   name: Commit, tag and push
+            if: ${{ inputs.real-op == 'true' }}
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/commit-tag-push.bash"
+            env:
+                VERSION: ${{ inputs.version }}
+                GIT_PUSH_ARGS: ${{ inputs.git-push-args }}
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
