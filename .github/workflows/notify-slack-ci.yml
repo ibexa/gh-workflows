@@ -1,0 +1,67 @@
+name: Notify Slack about CI results
+
+# Reusable Slack notification for CI workflows. Call it from a thin
+# `workflow_run`-triggered workflow on each repository's default branch:
+#
+#     on:
+#         workflow_run:
+#             workflows: ["Backend CI"]
+#             types: [completed]
+#     jobs:
+#         notify:
+#             uses: ibexa/gh-workflows/.github/workflows/notify-slack-ci.yml@main
+#             secrets: inherit
+
+on:
+    workflow_call:
+        inputs:
+            send-success-notification:
+                description: "Notify on success: 'true', 'false', or 'auto' (only when a human dispatched the run)"
+                type: string
+                default: "auto"
+        secrets:
+            SLACK_PHP_BACKEND_CI_WEBHOOK_URL:
+                description: "Incoming webhook of the target Slack channel (org-level secret, satisfied by 'secrets: inherit')"
+                required: true
+
+jobs:
+    notify:
+        name: Notify Slack
+        runs-on: "ubuntu-26.04"
+        if: github.event.workflow_run.event == 'workflow_dispatch'
+        steps:
+            - name: Decide whether to notify
+              id: decision
+              env:
+                  CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+                  ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
+                  SEND_SUCCESS: ${{ inputs.send-success-notification }}
+              run: |
+                  if [ "$CONCLUSION" != "success" ]; then
+                      # Failures (and cancellations) are always reported
+                      notify=true
+                  elif [ "$SEND_SUCCESS" = "auto" ]; then
+                      # Successes are reported only for human-dispatched runs,
+                      # so a bot dispatcher does not spam green builds
+                      if [[ "$ACTOR" == *'[bot]' ]]; then
+                          notify=false
+                      else
+                          notify=true
+                      fi
+                  else
+                      notify="$SEND_SUCCESS"
+                  fi
+                  echo "notify=$notify" >> "$GITHUB_OUTPUT"
+
+            - name: Send Slack notification
+              if: steps.decision.outputs.notify == 'true'
+              uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+              with:
+                  webhook: ${{ secrets.SLACK_PHP_BACKEND_CI_WEBHOOK_URL }}
+                  webhook-type: incoming-webhook
+                  payload: |
+                      blocks:
+                        - type: "section"
+                          text:
+                            type: "mrkdwn"
+                            text: "${{ github.event.workflow_run.conclusion == 'success' && '✅' || '❌' }} ${{ github.event.workflow_run.name }} *${{ github.repository }}*:*${{ github.event.workflow_run.head_branch }}* (${{ github.event.workflow_run.triggering_actor.login }}) | <${{ github.event.workflow_run.html_url }}|Details>"
