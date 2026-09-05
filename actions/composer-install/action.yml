@@ -17,6 +17,12 @@ inputs:
     satis-network-token:
         description: 'Satis Network Token'
         required: false
+    php-version:
+        description: >-
+            PHP version to set up (passed to setup-php). When empty, falls back to the calling job's
+            `matrix.php` for backwards compatibility. Jobs without a PHP matrix should set it explicitly,
+            otherwise setup-php installs its default (latest stable) PHP.
+        required: false
     php-extensions:
         description: 'Comma-separated list of PHP extensions to install'
         required: false
@@ -48,7 +54,7 @@ runs:
             uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
             id: setup_php
             with:
-                php-version: ${{ matrix.php }}
+                php-version: ${{ inputs.php-version != '' && inputs.php-version || matrix.php }}
                 coverage: ${{ inputs.coverage }}
                 extensions: ${{ inputs.php-extensions }}
                 tools: cs2pr
