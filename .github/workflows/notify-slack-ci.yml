@@ -28,12 +28,15 @@ jobs:
     notify:
         name: Notify Slack
         runs-on: "ubuntu-26.04"
-        if: github.event.workflow_run.event == 'workflow_dispatch'
+        # Only deliberately started runs are reported. Push and pull request
+        # runs are watched by their authors and would flood the channel.
+        if: contains(fromJSON('["workflow_dispatch", "schedule"]'), github.event.workflow_run.event)
         steps:
             - name: Decide whether to notify
               id: decision
               env:
                   CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+                  EVENT: ${{ github.event.workflow_run.event }}
                   ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
                   SEND_SUCCESS: ${{ inputs.send-success-notification }}
               run: |
@@ -41,12 +44,14 @@ jobs:
                       # Failures (and cancellations) are always reported
                       notify=true
                   elif [ "$SEND_SUCCESS" = "auto" ]; then
-                      # Successes are reported only for human-dispatched runs,
-                      # so a bot dispatcher does not spam green builds
-                      if [[ "$ACTOR" == *'[bot]' ]]; then
-                          notify=false
-                      else
+                      # Successes are reported only to whoever asked for the run
+                      # in person. Scheduled runs have nobody waiting for them,
+                      # and a bot dispatcher is not reading the channel either,
+                      # so in both cases green builds stay silent.
+                      if [ "$EVENT" = "workflow_dispatch" ] && [[ "$ACTOR" != *'[bot]' ]]; then
                           notify=true
+                      else
+                          notify=false
                       fi
                   else
                       notify="$SEND_SUCCESS"
