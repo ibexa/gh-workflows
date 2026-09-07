@@ -64,6 +64,10 @@ jobs:
               with:
                   webhook: ${{ secrets.SLACK_PHP_BACKEND_CI_WEBHOOK_URL }}
                   webhook-type: incoming-webhook
+                  # Fail the job when Slack rejects the call. Left at the
+                  # default of false, a revoked webhook would silence every
+                  # notification while these runs stayed green.
+                  errors: true
                   payload: |
                       blocks:
                         - type: "section"
