@@ -48,10 +48,15 @@ on:
                 type: string
                 default: ""
             app-url:
-                description: "URL under which the app is reachable from the runner host"
+                description: "URL under which the app is reachable from the runner host. Empty = derived from setup."
                 required: false
                 type: string
-                default: "http://localhost:8080"
+                default: ""
+            artifact-suffix:
+                description: "Discriminator when one run calls this workflow several times for the same edition (e.g. 'pgsql18-varnish')"
+                required: false
+                type: string
+                default: ''
             job-count:
                 description: "Number of jobs that will run the tests in parallel (Playwright --shard)"
                 required: false
@@ -150,7 +155,20 @@ jobs:
             matrix: ${{ fromJson(needs.setup-jobs.outputs.matrix) }}
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Derive app URL from setup
+              run: |
+                if [ -n "$APP_URL" ]; then
+                  echo "APP_URL=$APP_URL" >> $GITHUB_ENV
+                elif echo "$SETUP" | grep -q varnish; then
+                  echo "APP_URL=http://localhost:8081" >> $GITHUB_ENV
+                else
+                  echo "APP_URL=http://localhost:8080" >> $GITHUB_ENV
+                fi
+              env:
+                APP_URL: ${{ inputs.app-url }}
+                SETUP: ${{ inputs.setup }}
 
             - name: Set up project version
               id: project-version
@@ -164,13 +182,13 @@ jobs:
                 version: ${{ inputs.project-version }}
 
             - name: Setup PHP Action
-              uses: shivammathur/setup-php@v2
+              uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
               with:
                   php-version: 8.3
                   coverage: none
 
             - name: Cache dependencies
-              uses: actions/cache@v4
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
                   path: ${{ env.COMPOSER_CACHE_DIR }}
                   key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
@@ -180,7 +198,7 @@ jobs:
             - name: Generate token
               id: generate_token
               if: env.AUTOMATION_CLIENT_ID != ''
-              uses: actions/create-github-app-token@v2
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
                   app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
                   private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
@@ -288,6 +306,8 @@ jobs:
               run: |
                 cd ${HOME}/build/project/vendor/ibexa/cohesivo-playwright
                 EXTRA_ARGS="$TEST_SUITE"
+                # --pass-with-no-tests only under sharding: an empty shard is expected, an empty
+                # unsharded run means the edition grep matched nothing and should fail loudly.
                 if [ "$JOB_COUNT" -gt 1 ]; then
                   EXTRA_ARGS="$EXTRA_ARGS --shard=$(( SHARD_OFFSET + 1 ))/$JOB_COUNT --pass-with-no-tests"
                 fi
@@ -301,23 +321,17 @@ jobs:
                 TEST_PACKAGE: ${{ inputs.test-package }}
                 JOB_COUNT: ${{ needs.setup-jobs.outputs.job-count }}
                 SHARD_OFFSET: ${{ matrix.offset }}
-                APP_URL: ${{ inputs.app-url }}
+                APP_URL: ${{ env.APP_URL }}
                 APP_EDITION: ${{ inputs.project-edition }}
                 ADMIN_LOGIN: ${{ secrets.ADMIN_LOGIN || 'admin' }}
                 ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'publish' }}
                 CI: true
 
-            - name: Report timestamp
-              if: always()
-              id: report-ts
-              run: echo "value=$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
-
             - name: Upload Playwright report
               if: always()
               uses: actions/upload-artifact@v4
               with:
-                  # edition + shard make it unique within a run; UTC timestamp tells runs apart
-                  name: playwright-report-${{ inputs.project-edition }}-shard${{ matrix.offset }}-${{ steps.report-ts.outputs.value }}
+                  name: playwright-report-${{ inputs.project-edition }}-${{ inputs.artifact-suffix || inputs.test-package || 'all' }}-shard${{ matrix.offset }}-${{ github.run_id }}-${{ github.run_attempt }}
                   # `**` matches any depth, so one pair of globs covers both the package suites
                   # (<pkg>/tests/playwright-tests/) and cohesivo's own tests (cohesivo-playwright/)
                   path: |
