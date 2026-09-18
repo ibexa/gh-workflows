@@ -247,6 +247,15 @@ jobs:
             - name: Install ibexa/cohesivo-playwright
               run: |
                 cd ${HOME}/build/project
+                # A tested package can already pin ibexa/cohesivo-playwright to a specific
+                # branch/commit via its own dependencies.json (see prepare_project_edition.sh,
+                # which merges it into composer.json's "require" before this step runs). Don't
+                # clobber that pin with the floating project-version alias below unless the
+                # caller explicitly asked for a different version via the cohesivo-version input.
+                if [ -z "$COHESIVO_VERSION" ] && jq -e '(.require + ."require-dev")["ibexa/cohesivo-playwright"]' composer.json > /dev/null 2>&1; then
+                  echo "ibexa/cohesivo-playwright already pinned to $(jq -r '(.require + ."require-dev")["ibexa/cohesivo-playwright"]' composer.json) via dependencies.json, keeping it as-is"
+                  exit 0
+                fi
                 # empty cohesivo-version → match the project version (branch alias), so a 5.0/6.0
                 # branch installs the matching library version. (No 4.6 branch of the library exists.)
                 if [ -z "$COHESIVO_VERSION" ]; then
