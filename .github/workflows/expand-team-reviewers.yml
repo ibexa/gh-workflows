@@ -55,6 +55,27 @@ jobs:
             exit $exit_code
           fi
 
+          # Members who already gave a verdict must not be re-requested, otherwise their review
+          # disappears from the reviewers sidebar
+          reviewed=$(gh api /repos/$repo/pulls/$pr/reviews \
+                        --paginate --slurp \
+                        --jq '[.[][] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED") | .user.login] | unique | .[]')
+
+          exit_code=$?
+          if [[ $exit_code -ne 0 ]]
+          then
+            echo "Error: Failed to fetch pull request reviews"
+            echo "$reviewed" # contains the error message
+            exit $exit_code
+          fi
+
+          skipped=$(comm -12 <(sort <<< "$members") <(sort <<< "$reviewed") | paste -sd ",")
+          if [[ -n "$skipped" ]]
+          then
+            echo "Skipping $org/$team members who already reviewed $repo#$pr: $skipped"
+          fi
+          members=$(comm -23 <(sort <<< "$members") <(sort <<< "$reviewed"))
+
           if [[ -n "$members" ]]
           then
             members_list=$(echo "$members" | paste -sd ",")
