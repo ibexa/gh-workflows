@@ -38,6 +38,14 @@ inputs:
         description: "The branch/ref from ibexa/ci-scripts repository that should be used"
         required: false
         default: "main"
+    symfony-version:
+        description: >-
+            Symfony minor (e.g. `8.1`) to force for every symfony/* component, direct and transitive.
+            Adds root `conflict` entries `<X.Y` for all components of that symfony/symfony release before
+            installing, and fails the step afterwards if any of them resolved to another version.
+            Leave empty to install whatever the constraints resolve to.
+        required: false
+        default: ''
 
 runs:
     using: "composite"
@@ -84,6 +92,14 @@ runs:
             env:
                 GITHUB_ACTION_PATH: ${{ github.action_path }}
 
+        -   if: ${{ inputs.symfony-version != '' }}
+            name: 'Force Symfony ${{ inputs.symfony-version }}'
+            shell: bash
+            run: '"${GITHUB_ACTION_PATH}/composer-force-symfony-version.bash" "$SYMFONY_VERSION"'
+            env:
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+                SYMFONY_VERSION: ${{ inputs.symfony-version }}
+
         -   name: 'Ignore known unsolvable advisories'
             uses: ibexa/gh-workflows/actions/composer-audit-ignore@main
             with:
@@ -94,3 +110,11 @@ runs:
             with:
                 dependency-versions: highest
                 composer-options: ${{ inputs.composer-options }}
+
+        -   if: ${{ inputs.symfony-version != '' }}
+            name: 'Assert Symfony ${{ inputs.symfony-version }} is installed'
+            shell: bash
+            run: '"${GITHUB_ACTION_PATH}/composer-assert-symfony-version.bash" "$SYMFONY_VERSION"'
+            env:
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+                SYMFONY_VERSION: ${{ inputs.symfony-version }}

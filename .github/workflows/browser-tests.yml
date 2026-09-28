@@ -43,6 +43,11 @@ on:
                 description: "The branch from ibexa/ci-scripts repository that should be used"
                 required: false
                 type: string
+            symfony-version:
+                default: ""
+                description: "Symfony minor (e.g. 8.1) the project is forced to via extra.symfony.require; empty keeps the skeleton's own setting. Needs a php-image matching Symfony's PHP requirement."
+                required: false
+                type: string
             use-compatibility-layer:
                 default: false
                 type: boolean
@@ -232,6 +237,7 @@ jobs:
                 LAMBDATEST_ACCESS_KEY: "${{ secrets.LAMBDATEST_ACCESS_KEY }}"
                 INSTALL_CONNECTOR_QUABLE: ${{ inputs.install-connector-quable }}
                 CI_SCRIPTS_REF: ${{ inputs.ci-scripts-branch }}
+                SYMFONY_VERSION: ${{ inputs.symfony-version }}
 
             - if: startsWith(steps.project-version.outputs.version, 'v')
               name: Set up whole project using a stable release
