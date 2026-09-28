@@ -16,7 +16,11 @@ then
     exit 1
 fi
 
-components=$(
+components=()
+while IFS= read -r component
+do
+    components+=("$component")
+done < <(
     curl -fsSL https://repo.packagist.org/p2/symfony/symfony.json \
     | jq -r --arg v "$symfony_version" '
         [.packages["symfony/symfony"][] | select((.version | ltrimstr("v") | startswith($v + ".")) and (.version | contains("-") | not))]
@@ -27,14 +31,14 @@ components=$(
     '
 )
 
-if [[ -z $components ]]
+if [[ ${#components[@]} -eq 0 ]]
 then
     echo "No symfony/symfony $symfony_version.* release found on Packagist" >&2
     exit 1
 fi
 
 tmp_file=$(mktemp)
-jq --arg c "<$symfony_version" --args '.conflict = ((.conflict // {}) + ($ARGS.positional | map({(.): $c}) | add))' $components < "$composer_file" > "$tmp_file"
+jq --arg c "<$symfony_version" --args '.conflict = ((.conflict // {}) + ($ARGS.positional | map({(.): $c}) | add))' "${components[@]}" < "$composer_file" > "$tmp_file"
 mv "$tmp_file" "$composer_file"
 
-echo "> Added conflict <$symfony_version for $(echo "$components" | wc -l | tr -d ' ') symfony/* components"
+echo "> Added conflict <$symfony_version for ${#components[@]} symfony/* components"
