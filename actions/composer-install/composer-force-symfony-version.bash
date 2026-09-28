@@ -21,7 +21,7 @@ while IFS= read -r component
 do
     components+=("$component")
 done < <(
-    curl -fsSL https://repo.packagist.org/p2/symfony/symfony.json \
+    curl -fsSL --proto '=https' --tlsv1.2 https://repo.packagist.org/p2/symfony/symfony.json \
     | jq -r --arg v "$symfony_version" '
         [.packages["symfony/symfony"][] | select((.version | ltrimstr("v") | startswith($v + ".")) and (.version | contains("-") | not))]
         | first
