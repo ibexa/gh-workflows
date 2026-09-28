@@ -58,8 +58,8 @@ jobs:
           # Members who already gave a verdict must not be re-requested, otherwise their review
           # disappears from the reviewers sidebar
           reviewed=$(gh api /repos/$repo/pulls/$pr/reviews \
-                        --paginate --slurp \
-                        --jq '[.[][] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED") | .user.login] | unique | .[]')
+                        --paginate \
+                        --jq '.[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED") | .user.login')
 
           exit_code=$?
           if [[ $exit_code -ne 0 ]]
