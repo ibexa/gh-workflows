@@ -248,6 +248,19 @@ jobs:
                 INSTALL_CONNECTOR_QUABLE: ${{ inputs.install-connector-quable }}
                 CI_SCRIPTS_REF: ${{ inputs.ci-scripts-branch }}
 
+            - if: failure()
+              name: "[Debug] Capture GitHub API response for Flex recipes"
+              run: |
+                  url='https://api.github.com/repos/ibexa/recipes-dev/contents/index.json?ref=flex/main'
+                  echo "> GET $url"
+                  curl -sS -o body.json -D headers.txt -H "Authorization: token $GITHUB_TOKEN" "$url" || true
+                  grep -iE '^(HTTP/|x-ratelimit-|retry-after|x-github-request-id|x-github-sso|date)' headers.txt || true
+                  jq '{message, documentation_url}' body.json 2>/dev/null || head -c 500 body.json
+                  echo "> GET /rate_limit (does not count against the limit)"
+                  curl -sS -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/rate_limit | jq '.resources.core'
+              env:
+                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
             - if: inputs.use-compatibility-layer
               name: Set up compatibility-layer
               run: |
