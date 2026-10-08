@@ -2,6 +2,11 @@ name: Rector PHP
 
 on:
     workflow_call:
+        inputs:
+            php-version:
+                description: 'PHP version to run Rector with. When empty, setup-php default (latest stable) is used.'
+                required: false
+                type: string
         secrets:
             SATIS_NETWORK_KEY:
                 required: false
@@ -18,8 +23,11 @@ jobs:
         steps:
             - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+            - uses: ibexa/gh-workflows/actions/setup-composer-root-version@main
+
             - uses: ibexa/gh-workflows/actions/composer-install@main
               with:
+                  php-version: ${{ inputs.php-version }}
                   gh-client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
                   gh-client-secret: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
                   satis-network-key: ${{ secrets.SATIS_NETWORK_KEY }}
