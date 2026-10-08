@@ -180,7 +180,8 @@ jobs:
             - name: Setup PHP Action
               uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
               with:
-                  php-version: 8.3
+                  # 6.0 requires PHP 8.5, lower versions don't support it
+                  php-version: ${{ startsWith(steps.project-version.outputs.version, '6.0') && '8.5' || '8.3' }}
                   coverage: none
                   tools: composer:v2
 
