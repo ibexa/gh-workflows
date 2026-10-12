@@ -301,10 +301,24 @@ jobs:
             - name: Install Playwright browsers
               # Each package's tests/playwright-tests-php is its own composer
               # project with its own vendor/ — browsers must be installed into
-              # that same copy, not into ibexa/cohesivo-playwright's (which has
-              # no vendor/ of its own; its deps are flattened into the main
-              # project's vendor/ instead).
+              # that same copy. But playwright-php/playwright is ALSO pulled
+              # in as a transitive dependency of the main project itself (via
+              # ibexa/cohesivo-playwright -> playwright-php/playwright-symfony),
+              # landing a second copy at the top level. Despite every package's
+              # own copy being installed below, PHP's autoloader resolves
+              # Playwright\* classes to that top-level copy at runtime (likely
+              # due to the main project's "optimize-autoloader": true classmap
+              # taking precedence) — so its bin/node_modules must be populated
+              # too, or the Node bridge process fails with "Cannot find module
+              # 'playwright'" (surfacing to PHP as an opaque "Process exited
+              # with code 1" / DisconnectedException, with no stderr attached).
               run: |
+                topLevelDir=${HOME}/build/project/vendor/playwright-php/playwright
+                if [ -f "$topLevelDir/bin/playwright-install" ]; then
+                  echo "→ installing Playwright browsers for top-level $topLevelDir"
+                  (cd "$topLevelDir/bin" && php playwright-install --with-deps chromium)
+                fi
+
                 for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright-tests-php; do
                   if [ -f "$dir/composer.json" ]; then
                     echo "→ installing Playwright browsers for $dir"
@@ -317,7 +331,23 @@ jobs:
               # as "exited with code 1" (its own stderr goes to a PSR-3 logger,
               # never to the console) — launch it directly here instead, so a
               # real failure (e.g. missing system libraries) is visible in CI.
+              # Includes the top-level copy (see "Install Playwright browsers"
+              # above): this smoke test previously only checked each package's
+              # own copy and reported success while the top-level copy — the
+              # one PHP's autoloader actually resolves to at runtime — had no
+              # node_modules at all, masking the real failure.
               run: |
+                topLevelDir=${HOME}/build/project/vendor/playwright-php/playwright
+                if [ -d "$topLevelDir" ]; then
+                  echo "→ smoke-testing Chromium launch for top-level $topLevelDir"
+                  node -e "
+                    const { chromium } = require('$topLevelDir/bin/node_modules/playwright');
+                    chromium.launch({ headless: true })
+                      .then(async (b) => { console.log('Chromium launched OK'); await b.close(); })
+                      .catch((e) => { console.error('Chromium launch FAILED:', e); process.exit(1); });
+                  "
+                fi
+
                 for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright-tests-php; do
                   if [ -f "$dir/composer.json" ]; then
                     echo "→ smoke-testing Chromium launch for $dir"
