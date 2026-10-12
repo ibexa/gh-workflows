@@ -312,6 +312,24 @@ jobs:
                   fi
                 done
 
+            - name: Smoke-test Chromium launch
+              # Diagnostic: playwright-php only reports a crashed Node process
+              # as "exited with code 1" (its own stderr goes to a PSR-3 logger,
+              # never to the console) — launch it directly here instead, so a
+              # real failure (e.g. missing system libraries) is visible in CI.
+              run: |
+                for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright-tests-php; do
+                  if [ -f "$dir/composer.json" ]; then
+                    echo "→ smoke-testing Chromium launch for $dir"
+                    node -e "
+                      const { chromium } = require('$dir/vendor/playwright-php/playwright/bin/node_modules/playwright');
+                      chromium.launch({ headless: true })
+                        .then(async (b) => { console.log('Chromium launched OK'); await b.close(); })
+                        .catch((e) => { console.error('Chromium launch FAILED:', e); process.exit(1); });
+                    "
+                  fi
+                done
+
             - name: Make Docker Compose service hostnames resolvable from the host
               # Tests run in-process on the runner host, not in Docker — but the
               # assembled project's config (DATABASE_URL, SEARCH_ENGINE, etc.)
@@ -368,13 +386,8 @@ jobs:
               uses: actions/upload-artifact@v4
               with:
                   name: phpunit-playwright-failures-${{ inputs.project-edition }}-${{ inputs.artifact-suffix || inputs.test-package || 'all' }}-shard${{ matrix.offset }}-${{ github.run_id }}-${{ github.run_attempt }}
-                  # The second path is the assembled project's own Symfony log
-                  # (e.g. var/log/behat.log) — playwright-php logs a crashed
-                  # Node process's stderr there (via the "logger" service),
-                  # not to the console, so it's otherwise invisible in CI.
                   path: |
                       /home/runner/build/project/vendor/ibexa/**/var/log/playwright-failures/
-                      /home/runner/build/project/var/log/*.log
                   retention-days: 14
 
             - if: always() && github.event_name != 'pull_request'
