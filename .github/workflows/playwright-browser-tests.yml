@@ -368,8 +368,13 @@ jobs:
               uses: actions/upload-artifact@v4
               with:
                   name: phpunit-playwright-failures-${{ inputs.project-edition }}-${{ inputs.artifact-suffix || inputs.test-package || 'all' }}-shard${{ matrix.offset }}-${{ github.run_id }}-${{ github.run_attempt }}
+                  # The second path is the assembled project's own Symfony log
+                  # (e.g. var/log/behat.log) — playwright-php logs a crashed
+                  # Node process's stderr there (via the "logger" service),
+                  # not to the console, so it's otherwise invisible in CI.
                   path: |
                       /home/runner/build/project/vendor/ibexa/**/var/log/playwright-failures/
+                      /home/runner/build/project/var/log/*.log
                   retention-days: 14
 
             - if: always() && github.event_name != 'pull_request'
