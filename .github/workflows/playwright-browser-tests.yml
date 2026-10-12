@@ -280,8 +280,13 @@ jobs:
               with:
                   node-version: ${{ inputs.node-version }}
 
-            - name: Fix write permissions on project directory
-              run: sudo chmod -R a+rwX ${HOME}/build/project
+            - name: Fix write permissions on project directory and composer cache
+              # ci-scripts mounts ~/.composer into the install_dependencies
+              # container and writes there as root — later host-side composer
+              # installs (unprivileged runner user) need write access too.
+              run: |
+                sudo chmod -R a+rwX ${HOME}/build/project
+                sudo chmod -R a+rwX ${HOME}/.composer
 
             - name: Install per-package PHPUnit test dependencies
               # Mirrors the npm per-package install this workflow does for the TS path.
