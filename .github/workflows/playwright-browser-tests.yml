@@ -317,13 +317,17 @@ jobs:
               # Sharding (job-count > 1) uses vendor/bin/group-phpunit, shipped
               # as a composer "bin" by ibexa/cohesivo-playwright.
               # --group "$APP_EDITION" mirrors TS's EDITION_GREP/@IbexaOSS etc. tags.
+              # APP_ENV inherits "behat" from the job env (not overridden to
+              # "test" here): the assembled project's cache/bundles were built
+              # for "behat", and some bundles (e.g. league_oauth2_server) are
+              # only registered for environments ci-scripts explicitly allows.
               run: |
                 cd ${HOME}/build/project/vendor/ibexa/${TEST_PACKAGE:-admin-ui}/tests/playwright-tests-php
                 if [ "$JOB_COUNT" -gt 1 ]; then
-                  APP_ENV=test vendor/bin/group-phpunit \
+                  vendor/bin/group-phpunit \
                     --group-count="$JOB_COUNT" --group-offset="$SHARD_OFFSET" -- --group "$APP_EDITION" $TEST_SUITE
                 else
-                  APP_ENV=test vendor/bin/phpunit --group "$APP_EDITION" $TEST_SUITE
+                  vendor/bin/phpunit --group "$APP_EDITION" $TEST_SUITE
                 fi
               env:
                 TEST_SUITE: ${{ inputs.test-suite }}
