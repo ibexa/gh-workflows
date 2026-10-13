@@ -9,8 +9,11 @@ on:
     workflow_call:
         inputs:
             php-versions:
-                description: 'JSON array of PHP versions to generate the baselines on, e.g. ["8.5", "8.6"].'
-                required: true
+                description: >-
+                    JSON array of PHP versions to generate the baselines on, e.g. ["8.5", "8.6"].
+                    When empty, the versions are inferred from the package's branch-alias.
+                required: false
+                default: ''
                 type: string
         secrets:
             AUTOMATION_CLIENT_ID:
@@ -23,13 +26,44 @@ on:
                 required: false
 
 jobs:
+    php-versions:
+        name: Resolve PHP versions
+        runs-on: "ubuntu-26.04"
+        outputs:
+            php-versions: ${{ steps.resolve.outputs.php-versions }}
+
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            # Keep in line with the backend CI matrix of each product version.
+            - id: resolve
+              env:
+                  PHP_VERSIONS: ${{ inputs.php-versions }}
+              run: |
+                  if [[ -z "$PHP_VERSIONS" ]]; then
+                      BRANCH_ALIAS=$(jq -r '[.extra."branch-alias"[]][0]' composer.json)
+                      case "$BRANCH_ALIAS" in
+                          6.0.x-dev) PHP_VERSIONS='["8.5"]' ;;
+                          5.0.x-dev) PHP_VERSIONS='["8.3", "8.4"]' ;;
+                          4.6.x-dev) PHP_VERSIONS='["7.4", "8.1", "8.3", "8.4"]' ;;
+                          *)
+                              echo "::error::No PHP versions known for branch-alias '${BRANCH_ALIAS}', pass php-versions explicitly."
+                              exit 1
+                              ;;
+                      esac
+                  fi
+
+                  echo "PHP versions: ${PHP_VERSIONS}"
+                  echo "php-versions=${PHP_VERSIONS}" >> "$GITHUB_OUTPUT"
+
     generate:
         name: Generate on PHP ${{ matrix.php }}
+        needs: php-versions
         runs-on: "ubuntu-26.04"
         strategy:
             fail-fast: true
             matrix:
-                php: ${{ fromJSON(inputs.php-versions) }}
+                php: ${{ fromJSON(needs.php-versions.outputs.php-versions) }}
 
         steps:
             - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -57,7 +91,7 @@ jobs:
 
     commit:
         name: Commit baselines
-        needs: generate
+        needs: [php-versions, generate]
         runs-on: "ubuntu-26.04"
 
         steps:
@@ -75,7 +109,7 @@ jobs:
 
             - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
               with:
-                  php-version: ${{ fromJSON(inputs.php-versions)[0] }}
+                  php-version: ${{ fromJSON(needs.php-versions.outputs.php-versions)[0] }}
                   coverage: none
 
             - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -92,7 +126,7 @@ jobs:
               env:
                   GH_TOKEN: ${{ steps.generate_token.outputs.token }}
                   BRANCH: ${{ github.ref_name }}
-                  PHP_VERSIONS: ${{ join(fromJSON(inputs.php-versions), ', ') }}
+                  PHP_VERSIONS: ${{ join(fromJSON(needs.php-versions.outputs.php-versions), ', ') }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   if git diff --quiet; then
