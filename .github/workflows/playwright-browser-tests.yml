@@ -383,6 +383,33 @@ jobs:
                   [ -n "$ip" ] && echo "$ip $service" | sudo tee -a /etc/hosts
                 done
 
+            - name: Make the app container's database config visible to the host
+              # Tests run in-process on the runner host, not in Docker — so
+              # DATABASE_URL gets built (.env's own
+              # ${DATABASE_PLATFORM}://...@${DATABASE_HOST}:${DATABASE_PORT}/...
+              # interpolation) from whatever DATABASE_* values are already in
+              # the host's own environment, falling back to .env's literal
+              # defaults (committed for the default stack, MySQL on 3306)
+              # for anything not already set. Non-default stacks (postgres,
+              # mariadb+elastic, …) only override DATABASE_* for the "app"
+              # service's OWN container environment, via each
+              # doc/docker/db-*.yml's "environment:" list (confirmed:
+              # db-postgresql18.yml sets DATABASE_PORT=5432,
+              # DATABASE_DRIVER=pdo_pgsql, DATABASE_PLATFORM=pgsql,
+              # DATABASE_VERSION, DATABASE_CHARSET for "app" only) — the host
+              # process never sees those, so it silently falls back to the
+              # MySQL defaults regardless of which stack was actually
+              # requested, and fails to connect (wrong port/driver) the
+              # moment a non-default stack is used. Copying the resolved
+              # values out of the already-running "app" container's own
+              # environment — rather than re-deriving them from the compose
+              # files — keeps this correct automatically if a stack ever adds
+              # or renames a DATABASE_* override.
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T app sh -c 'env' \
+                  | grep '^DATABASE_' >> "$GITHUB_ENV"
+
             - name: Run PHPUnit tests
               # inputs passed via env, not interpolated, to avoid shell injection.
               # Sharding (job-count > 1) uses vendor/bin/group-phpunit, shipped
