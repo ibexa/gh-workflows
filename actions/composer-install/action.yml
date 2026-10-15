@@ -38,6 +38,12 @@ inputs:
         description: "The branch/ref from ibexa/ci-scripts repository that should be used"
         required: false
         default: "main"
+    restrict-stability:
+        description: >-
+            Whether to let only Ibexa packages resolve to development versions, keeping every other
+            dependency on stable releases. Set to 'false' to opt a repository out.
+        required: false
+        default: 'true'
 
 runs:
     using: "composite"
@@ -89,6 +95,10 @@ runs:
             with:
                 php-version: ${{ steps.setup_php.outputs.php-version }}
                 ci-scripts-ref: ${{ inputs.ci-scripts-ref }}
+
+        -   if: ${{ inputs.restrict-stability == 'true' }}
+            name: 'Restrict development versions to Ibexa packages'
+            uses: ibexa/composer-stability-plugin/actions/install-plugin@main
 
         -   uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
             with:
