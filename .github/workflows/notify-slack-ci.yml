@@ -1,0 +1,76 @@
+name: Notify Slack about CI results
+
+# Reusable Slack notification for CI workflows. Call it from a thin
+# `workflow_run`-triggered workflow on each repository's default branch:
+#
+#     on:
+#         workflow_run:
+#             workflows: ["Backend CI"]
+#             types: [completed]
+#     jobs:
+#         notify:
+#             uses: ibexa/gh-workflows/.github/workflows/notify-slack-ci.yml@main
+#             secrets: inherit
+
+on:
+    workflow_call:
+        inputs:
+            send-success-notification:
+                description: "Notify on success: 'true', 'false', or 'auto' (only when a human dispatched the run)"
+                type: string
+                default: "auto"
+        secrets:
+            SLACK_PHP_BACKEND_CI_WEBHOOK_URL:
+                description: "Incoming webhook of the target Slack channel (org-level secret, satisfied by 'secrets: inherit')"
+                required: true
+
+jobs:
+    notify:
+        name: Notify Slack
+        runs-on: "ubuntu-26.04"
+        # Only deliberately started runs are reported. Push and pull request
+        # runs are watched by their authors and would flood the channel.
+        if: contains(fromJSON('["workflow_dispatch", "schedule"]'), github.event.workflow_run.event)
+        steps:
+            - name: Decide whether to notify
+              id: decision
+              env:
+                  CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+                  EVENT: ${{ github.event.workflow_run.event }}
+                  ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
+                  SEND_SUCCESS: ${{ inputs.send-success-notification }}
+              run: |
+                  if [ "$CONCLUSION" != "success" ]; then
+                      # Failures (and cancellations) are always reported
+                      notify=true
+                  elif [ "$SEND_SUCCESS" = "auto" ]; then
+                      # Successes are reported only to whoever asked for the run
+                      # in person. Scheduled runs have nobody waiting for them,
+                      # and a bot dispatcher is not reading the channel either,
+                      # so in both cases green builds stay silent.
+                      if [ "$EVENT" = "workflow_dispatch" ] && [[ "$ACTOR" != *'[bot]' ]]; then
+                          notify=true
+                      else
+                          notify=false
+                      fi
+                  else
+                      notify="$SEND_SUCCESS"
+                  fi
+                  echo "notify=$notify" >> "$GITHUB_OUTPUT"
+
+            - name: Send Slack notification
+              if: steps.decision.outputs.notify == 'true'
+              uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+              with:
+                  webhook: ${{ secrets.SLACK_PHP_BACKEND_CI_WEBHOOK_URL }}
+                  webhook-type: incoming-webhook
+                  # Fail the job when Slack rejects the call. Left at the
+                  # default of false, a revoked webhook would silence every
+                  # notification while these runs stayed green.
+                  errors: true
+                  payload: |
+                      blocks:
+                        - type: "section"
+                          text:
+                            type: "mrkdwn"
+                            text: "${{ github.event.workflow_run.conclusion == 'success' && '✅' || '❌' }} ${{ github.event.workflow_run.name }} *${{ github.repository }}*:*${{ github.event.workflow_run.head_branch }}* (${{ github.event.workflow_run.triggering_actor.login }}) | <${{ github.event.workflow_run.html_url }}|Details>"
