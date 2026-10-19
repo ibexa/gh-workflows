@@ -383,7 +383,7 @@ jobs:
                   [ -n "$ip" ] && echo "$ip $service" | sudo tee -a /etc/hosts
                 done
 
-            - name: Make the app container's database config visible to the host
+            - name: Make the app container's database and search-engine config visible to the host
               # Tests run in-process on the runner host, not in Docker — so
               # DATABASE_URL gets built (.env's own
               # ${DATABASE_PLATFORM}://...@${DATABASE_HOST}:${DATABASE_PORT}/...
@@ -405,10 +405,24 @@ jobs:
               # environment — rather than re-deriving them from the compose
               # files — keeps this correct automatically if a stack ever adds
               # or renames a DATABASE_* override.
+              #
+              # Same problem, same fix, for the search engine: SEARCH_ENGINE
+              # (config/packages/ibexa.yaml), ELASTICSEARCH_DSN
+              # (config/packages/ibexa_elasticsearch.yaml) and SOLR_DSN/
+              # SOLR_CORE (config/packages/ibexa_solr.yaml) are likewise only
+              # overridden inside the "app" container's own environment per
+              # stack. Without this, the host process silently falls back to
+              # .env's committed SEARCH_ENGINE=legacy regardless of which
+              # stack is actually running — the host-side kernel then creates
+              # fixtures against the Legacy/DB index while the real app
+              # container queries Elasticsearch/Solr, which never sees that
+              # content. Suspected root cause of TrashTest failing only on
+              # the Elastic8/Solr8 stacks (see ibexa/commerce#2056) — this
+              # change exists to confirm or rule that out.
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T app sh -c 'env' \
-                  | grep '^DATABASE_' >> "$GITHUB_ENV"
+                  | grep -E '^(DATABASE_|SEARCH_ENGINE|ELASTICSEARCH_|SOLR_)' >> "$GITHUB_ENV"
 
             - name: Run PHPUnit tests
               # inputs passed via env, not interpolated, to avoid shell injection.
