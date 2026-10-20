@@ -103,7 +103,7 @@ env:
 
 jobs:
     setup-jobs:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2404
         timeout-minutes: 1
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
@@ -151,7 +151,7 @@ jobs:
 
     browser-tests:
         needs: setup-jobs
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2404
         timeout-minutes: ${{ inputs.timeout }}
         strategy:
           fail-fast: false
@@ -161,7 +161,7 @@ jobs:
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
 
-            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+            - uses: useblacksmith/checkout@v1 # v7.0.0
 
             - name: Set up project version
               id: project-version
