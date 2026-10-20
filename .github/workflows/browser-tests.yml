@@ -227,10 +227,6 @@ jobs:
             - name: Configure database tmpfs optimization
               run: |
                 cat << 'EOF' > /home/runner/db-tmpfs.yml
-                services:
-                  db:
-                    tmpfs:
-                      - /var/lib/postgresql/data:rw,noexec,nosuid,size=3072m,uid=999,gid=999,mode=0700
                 volumes:
                   mysql:
                     driver: local
