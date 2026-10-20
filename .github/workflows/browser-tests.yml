@@ -109,7 +109,7 @@ env:
 
 jobs:
     setup-jobs:
-        runs-on: blacksmith-4vcpu-ubuntu-2404
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         timeout-minutes: 1
         outputs:
           matrix: ${{ steps.generate-matrix.outputs.matrix }}
@@ -157,7 +157,7 @@ jobs:
 
     browser-tests:
         needs: setup-jobs
-        runs-on: blacksmith-4vcpu-ubuntu-2404
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         timeout-minutes: ${{ inputs.timeout }}
         strategy:
           fail-fast: false
@@ -217,9 +217,30 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ !contains(steps.project-version.outputs.version, '3.3') && steps.generate_token.outputs.token || secrets.EZROBOT_33 }}
 
-            - name: Configure database tmpfs optimization
+            - name: Configure database CI optimizations (tmpfs & performance flags)
               run: |
-                cat << 'EOF' > /home/runner/db-tmpfs.yml
+                if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
+                services:
+                  db:
+                    environment:
+                      - POSTGRES_INITDB_ARGS=--no-sync
+                    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+                EOF
+                else
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-ci.cnf
+                [mysqld]
+                innodb_flush_log_at_trx_commit = 0
+                sync_binlog = 0
+                innodb_doublewrite = 0
+                EOF
+                  chmod 644 /home/runner/db-ci.cnf
+
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
+                services:
+                  db:
+                    volumes:
+                      - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
                 volumes:
                   mysql:
                     driver: local
@@ -228,6 +249,7 @@ jobs:
                       device: tmpfs
                       o: "size=3072m"
                 EOF
+                fi
 
             - if: startsWith(steps.project-version.outputs.version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
