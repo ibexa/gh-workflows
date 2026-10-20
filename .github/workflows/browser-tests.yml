@@ -54,7 +54,7 @@ on:
                 type: number
                 description: "Number of jobs that will run the tests in parallel"
             process-count:
-                default: 2
+                default: 1
                 required: false
                 type: number
                 description: "Number of processes to run per job"
@@ -224,12 +224,28 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ !contains(steps.project-version.outputs.version, '3.3') && steps.generate_token.outputs.token || secrets.EZROBOT_33 }}
 
+            - name: Configure database tmpfs optimization
+              run: |
+                cat << 'EOF' > /home/runner/db-tmpfs.yml
+                services:
+                  db:
+                    tmpfs:
+                      - /var/lib/postgresql/data:rw,noexec,nosuid,size=3072m
+                volumes:
+                  mysql:
+                    driver: local
+                    driver_opts:
+                      type: tmpfs
+                      device: tmpfs
+                      o: "size=3072m"
+                EOF
+
             - if: startsWith(steps.project-version.outputs.version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ steps.project-version.outputs.version }}/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ inputs.php-image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
@@ -244,7 +260,7 @@ jobs:
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ inputs.php-image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
