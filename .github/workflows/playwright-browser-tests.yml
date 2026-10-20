@@ -449,6 +449,32 @@ jobs:
                 APP_EDITION: ${{ inputs.project-edition }}
                 JOB_COUNT: ${{ needs.setup-jobs.outputs.job-count }}
 
+            - name: Warm up the app before running Playwright tests
+              # Confirmed via real CI runs, recurring — not a one-off: the
+              # FIRST real browser navigation of the whole suite times out
+              # (Playwright\Exception\TimeoutException: JSON-RPC request 4
+              # timed out, on nothing more than loading the admin login
+              # page). The 30s default navigation timeout lands on Symfony's
+              # own first-request cost (DI container compilation, routing
+              # cache) for the behat env, now with a real network hop from
+              # the sidecar's browser to "web" added on top. Every other
+              # test (same env, already warm) passes under the same 30s
+              # ceiling every time — only the first one is at risk.
+              #
+              # A plain HTTP request from inside "app" pays that cold-start
+              # cost here instead, outside the Playwright-timeout-constrained
+              # path — more faithful to what the browser will actually hit
+              # than `bin/console cache:warmup` (asset/routing caches that
+              # only build lazily on a real request are easy to miss
+              # otherwise), and doesn't depend on which test happens to run
+              # first, unlike raising the timeout globally would.
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T -e APP_URL app sh -c \
+                  'curl -fsS -o /dev/null -w "warm-up request: HTTP %{http_code} in %{time_total}s\n" "$APP_URL/" || echo "warm-up request failed (non-fatal, best-effort) — the real test run below will surface the real error if the app truly is not ready"'
+              env:
+                APP_URL: ${{ env.APP_URL }}
+
             - name: Run PHPUnit tests
               # Container-execution rework (step 3): PHPUnit now runs inside
               # "app" via docker compose exec, exactly like Behat already
