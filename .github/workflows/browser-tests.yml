@@ -53,6 +53,11 @@ on:
                 required: false
                 type: number
                 description: "Number of jobs that will run the tests in parallel"
+            process-count:
+                default: 1
+                required: false
+                type: number
+                description: "Number of processes to run per job"
             send-success-notification:
                 default: true
                 required: false
@@ -100,6 +105,7 @@ env:
     APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
     PHP_INI_ENV_memory_limit: 1G
     COMPOSER_CACHE_DIR: ~/.composer/cache
+    COMPOSER_IGNORE_PLATFORM_REQ: php
 
 jobs:
     setup-jobs:
@@ -126,7 +132,7 @@ jobs:
             - name: Generate matrix
               id: generate-matrix
               run: |
-                matrix=$(php -r 'echo json_encode(["offset" => range(0, ${{ env.job_count }} - 1)]);')
+                matrix=$(jq -n -c --argjson count "$job_count" '{offset: [range(0; $count)]}')
                 echo "matrix=$matrix" >> $GITHUB_OUTPUT
                 echo "job-count=$job_count" >> $GITHUB_OUTPUT
             - if: always() && github.event_name != 'pull_request'
@@ -177,14 +183,6 @@ jobs:
               env:
                 version: ${{ inputs.project-version }}
 
-            - name: Setup PHP Action
-              uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
-              with:
-                  # 6.0 requires PHP 8.5, lower versions don't support it
-                  php-version: ${{ startsWith(steps.project-version.outputs.version, '6.0') && '8.5' || '8.3' }}
-                  coverage: none
-                  tools: composer:v2
-
             - name: Check Composer version
               run: composer --version
 
@@ -219,12 +217,46 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ !contains(steps.project-version.outputs.version, '3.3') && steps.generate_token.outputs.token || secrets.EZROBOT_33 }}
 
+            - name: Configure database CI optimizations (tmpfs & performance flags)
+              run: |
+                if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
+                services:
+                  db:
+                    environment:
+                      - POSTGRES_INITDB_ARGS=--no-sync
+                    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+                EOF
+                else
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-ci.cnf
+                [mysqld]
+                innodb_flush_log_at_trx_commit = 0
+                sync_binlog = 0
+                innodb_doublewrite = 0
+                EOF
+                  chmod 644 /home/runner/db-ci.cnf
+
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
+                services:
+                  db:
+                    volumes:
+                      - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
+                volumes:
+                  mysql:
+                    driver: local
+                    driver_opts:
+                      type: tmpfs
+                      device: tmpfs
+                      o: "size=3072m"
+                EOF
+                fi
+
             - if: startsWith(steps.project-version.outputs.version, 'v') == false
               name: Set up whole project using the tested dependency (dev version)
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ steps.project-version.outputs.version }}/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ inputs.php-image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
@@ -239,7 +271,7 @@ jobs:
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ inputs.php-image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
@@ -342,7 +374,7 @@ jobs:
             - name: Run tests
               run: |
                   cd ${HOME}/build/project
-                  docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }} --process=1"
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat --group-count=${{ needs.setup-jobs.outputs.job-count }} --group-offset=${{ matrix.offset }} ${{ inputs.test-suite }} --process=${{ inputs.process-count }}"
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message variables
