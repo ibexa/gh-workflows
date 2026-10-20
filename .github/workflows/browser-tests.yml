@@ -161,7 +161,7 @@ jobs:
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
 
-            - uses: useblacksmith/checkout@v1 # v7.0.0
+            - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1
 
             - name: Set up project version
               id: project-version
