@@ -32,11 +32,6 @@ on:
                 required: false
                 type: string
                 default: "ghcr.io/ibexa/docker/php:8.5-node22"
-            node-version:
-                description: "Node.js version — playwright-php shells out to the real Node-based playwright-core, so this is needed even for PHP tests"
-                required: false
-                type: string
-                default: "22"
             ci-scripts-branch:
                 description: "Branch from ibexa/ci-scripts to use"
                 required: false
@@ -156,13 +151,24 @@ jobs:
             - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
             - name: Derive app URL from setup
+              # Container-execution rework (step 3): the browser now runs in a
+              # sidecar container on the Compose network, not on the runner
+              # host, so this needs a Compose-network-internal address — the
+              # service's own name — instead of a host-published
+              # localhost:PORT. The varnish/no-varnish split (previously
+              # :8081 vs :8080, the two published host ports) becomes the
+              # varnish/web service name instead: a varnish-fronted stack
+              # navigates through varnish, same as a real browser hitting the
+              # edge would, everything else goes straight to the nginx "web"
+              # service. A caller passing an explicit app-url override is now
+              # expected to pass an internal address too.
               run: |
                 if [ -n "$APP_URL" ]; then
                   echo "APP_URL=$APP_URL" >> $GITHUB_ENV
                 elif echo "$SETUP" | grep -q varnish; then
-                  echo "APP_URL=http://localhost:8081" >> $GITHUB_ENV
+                  echo "APP_URL=http://varnish" >> $GITHUB_ENV
                 else
-                  echo "APP_URL=http://localhost:8080" >> $GITHUB_ENV
+                  echo "APP_URL=http://web" >> $GITHUB_ENV
                 fi
               env:
                 APP_URL: ${{ inputs.app-url }}
@@ -180,9 +186,11 @@ jobs:
                 version: ${{ inputs.project-version }}
 
             - name: Derive host PHP version from php-image
-              # Tests run in-process on the runner host (not in Docker), so the
-              # host PHP must match the Docker image's version — the project's
-              # own floor (>=8.5) would otherwise fail to boot under an older one.
+              # Container-execution rework (step 3): PHPUnit itself no longer
+              # runs on the runner host, so this no longer matters for test
+              # execution — kept only because the composer credential-config
+              # steps below ("Add composer keys...") still run bare composer
+              # commands on the host, before the containerized project exists.
               id: host-php-version
               run: |
                 version=$(echo "$PHP_IMAGE" | grep -oE '[0-9]+\.[0-9]+' | head -1)
@@ -275,175 +283,190 @@ jobs:
                 COHESIVO_VERSION: ${{ inputs.cohesivo-version }}
                 PROJECT_VERSION: ${{ steps.project-version.outputs.version }}
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: ${{ inputs.node-version }}
-
             - name: Fix write permissions on project directory and composer cache
               # ci-scripts mounts ~/.composer into the install_dependencies
               # container and writes there as root — later host-side composer
-              # installs (unprivileged runner user) need write access too.
+              # steps (the credential-config ones above, unprivileged runner
+              # user) need write access too.
               run: |
                 sudo chmod -R a+rwX ${HOME}/build/project
                 sudo chmod -R a+rwX ${HOME}/.composer
 
-            - name: Install per-package PHPUnit test dependencies
-              # Mirrors the npm per-package install this workflow does for the TS path.
-              run: |
-                for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright-tests-php; do
-                  if [ -f "$dir/composer.json" ]; then
-                    echo "→ composer install in $dir"
-                    (cd "$dir" && composer install --no-interaction)
-                  fi
-                done
-
-            - name: Install Playwright browsers
-              # Each package's tests/playwright-tests-php is its own composer
-              # project with its own vendor/ — browsers must be installed into
-              # that same copy. But playwright-php/playwright is ALSO pulled
-              # in as a transitive dependency of the main project itself (via
-              # ibexa/cohesivo-playwright -> playwright-php/playwright-symfony),
-              # landing a second copy at the top level. Despite every package's
-              # own copy being installed below, PHP's autoloader resolves
-              # Playwright\* classes to that top-level copy at runtime (likely
-              # due to the main project's "optimize-autoloader": true classmap
-              # taking precedence) — so its bin/node_modules must be populated
-              # too, or the Node bridge process fails with "Cannot find module
-              # 'playwright'" (surfacing to PHP as an opaque "Process exited
-              # with code 1" / DisconnectedException, with no stderr attached).
-              run: |
-                topLevelDir=${HOME}/build/project/vendor/playwright-php/playwright
-                if [ -f "$topLevelDir/bin/playwright-install" ]; then
-                  echo "→ installing Playwright browsers for top-level $topLevelDir"
-                  (cd "$topLevelDir/bin" && php playwright-install --with-deps chromium)
-                fi
-
-                for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright-tests-php; do
-                  if [ -f "$dir/composer.json" ]; then
-                    echo "→ installing Playwright browsers for $dir"
-                    (cd "$dir" && vendor/bin/playwright-install --with-deps chromium)
-                  fi
-                done
-
-            - name: Smoke-test Chromium launch
-              # Diagnostic: playwright-php only reports a crashed Node process
-              # as "exited with code 1" (its own stderr goes to a PSR-3 logger,
-              # never to the console) — launch it directly here instead, so a
-              # real failure (e.g. missing system libraries) is visible in CI.
-              # Includes the top-level copy (see "Install Playwright browsers"
-              # above): this smoke test previously only checked each package's
-              # own copy and reported success while the top-level copy — the
-              # one PHP's autoloader actually resolves to at runtime — had no
-              # node_modules at all, masking the real failure.
-              run: |
-                topLevelDir=${HOME}/build/project/vendor/playwright-php/playwright
-                if [ -d "$topLevelDir" ]; then
-                  echo "→ smoke-testing Chromium launch for top-level $topLevelDir"
-                  node -e "
-                    const { chromium } = require('$topLevelDir/bin/node_modules/playwright');
-                    chromium.launch({ headless: true })
-                      .then(async (b) => { console.log('Chromium launched OK'); await b.close(); })
-                      .catch((e) => { console.error('Chromium launch FAILED:', e); process.exit(1); });
-                  "
-                fi
-
-                for dir in ${HOME}/build/project/vendor/ibexa/*/tests/playwright-tests-php; do
-                  if [ -f "$dir/composer.json" ]; then
-                    echo "→ smoke-testing Chromium launch for $dir"
-                    node -e "
-                      const { chromium } = require('$dir/vendor/playwright-php/playwright/bin/node_modules/playwright');
-                      chromium.launch({ headless: true })
-                        .then(async (b) => { console.log('Chromium launched OK'); await b.close(); })
-                        .catch((e) => { console.error('Chromium launch FAILED:', e); process.exit(1); });
-                    "
-                  fi
-                done
-
-            - name: Make Docker Compose service hostnames resolvable from the host
-              # Tests run in-process on the runner host, not in Docker — but the
-              # assembled project's config (DATABASE_URL, SEARCH_ENGINE, etc.)
-              # uses Docker Compose's internal service hostnames (db, varnish,
-              # redis...), which only resolve inside the compose network.
-              # Port publishing is inconsistent across stacks (db/redis: none;
-              # postgres: a different host port; solr/elastic: matching) — so
-              # instead of guessing a port, map each hostname straight to its
-              # container's own IP on the compose network (host-routable on
-              # Linux's native Docker networking, which is what runners use).
-              run: |
-                cd ${HOME}/build/project
-                for service in $(docker compose --env-file=.env config --services); do
-                  container_id=$(docker compose --env-file=.env ps -q "$service")
-                  [ -z "$container_id" ] && continue
-                  # jq, not the Go template's {{range}}: some services (solr,
-                  # elasticsearch) sit on two networks, which {{range}} would
-                  # concatenate into one unusable string with no separator.
-                  ip=$(docker inspect "$container_id" --format '{{json .NetworkSettings.Networks}}' \
-                    | jq -r 'to_entries | .[0].value.IPAddress // empty')
-                  [ -n "$ip" ] && echo "$ip $service" | sudo tee -a /etc/hosts
-                done
-
-            - name: Make the app container's database and search-engine config visible to the host
-              # Tests run in-process on the runner host, not in Docker — so
-              # DATABASE_URL gets built (.env's own
-              # ${DATABASE_PLATFORM}://...@${DATABASE_HOST}:${DATABASE_PORT}/...
-              # interpolation) from whatever DATABASE_* values are already in
-              # the host's own environment, falling back to .env's literal
-              # defaults (committed for the default stack, MySQL on 3306)
-              # for anything not already set. Non-default stacks (postgres,
-              # mariadb+elastic, …) only override DATABASE_* for the "app"
-              # service's OWN container environment, via each
-              # doc/docker/db-*.yml's "environment:" list (confirmed:
-              # db-postgresql18.yml sets DATABASE_PORT=5432,
-              # DATABASE_DRIVER=pdo_pgsql, DATABASE_PLATFORM=pgsql,
-              # DATABASE_VERSION, DATABASE_CHARSET for "app" only) — the host
-              # process never sees those, so it silently falls back to the
-              # MySQL defaults regardless of which stack was actually
-              # requested, and fails to connect (wrong port/driver) the
-              # moment a non-default stack is used. Copying the resolved
-              # values out of the already-running "app" container's own
-              # environment — rather than re-deriving them from the compose
-              # files — keeps this correct automatically if a stack ever adds
-              # or renames a DATABASE_* override.
+            - name: Start Playwright browser-server sidecar
+              # Container-execution rework (step 3): the actual browser now
+              # lives in its own container on the Compose network, instead of
+              # being launched locally by whichever process drives PHPUnit —
+              # confirmed working end-to-end in a local spike using
+              # playwright-php's own connect()/launchServer(). Chromium ships
+              # inside this image already, so there's no browser to install —
+              # the Node bridge itself still needs the playwright npm package,
+              # though; see "Install the Playwright npm package" below
+              # (replaces the old host-side "Install Playwright browsers" /
+              # "Smoke-test Chromium launch" steps between them).
               #
-              # Same problem, same fix, for the search engine: SEARCH_ENGINE
-              # (config/packages/ibexa.yaml), ELASTICSEARCH_DSN
-              # (config/packages/ibexa_elasticsearch.yaml) and SOLR_DSN/
-              # SOLR_CORE (config/packages/ibexa_solr.yaml) are likewise only
-              # overridden inside the "app" container's own environment per
-              # stack. Without this, the host process silently falls back to
-              # .env's committed SEARCH_ENGINE=legacy regardless of which
-              # stack is actually running — the host-side kernel then creates
-              # fixtures against the Legacy/DB index while the real app
-              # container queries Elasticsearch/Solr, which never sees that
-              # content. Suspected root cause of TrashTest failing only on
-              # the Elastic8/Solr8 stacks (see ibexa/commerce#2056) — this
-              # change exists to confirm or rule that out.
+              # Plain `docker run`, not a Compose service: this reusable
+              # workflow doesn't own the setup's own Compose files (they live
+              # in a dependency none of the 4 repos in this PoC control), so
+              # joining the already-running stack's network directly avoids
+              # needing a 5th repo's cooperation just to add one container.
               run: |
                 cd ${HOME}/build/project
-                docker compose --env-file=.env exec -T app sh -c 'env' \
-                  | grep -E '^(DATABASE_|SEARCH_ENGINE|ELASTICSEARCH_|SOLR_)' >> "$GITHUB_ENV"
+                network=$(docker inspect "$(docker compose --env-file=.env ps -q app)" \
+                  --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys[0]')
+
+                docker run -d --name playwright-browser-server --network "$network" -w /tmp \
+                  mcr.microsoft.com/playwright:v1.63.0-jammy \
+                  sh -c 'npm install --no-audit --no-fund playwright@1.63.0 && node -e "
+                    require(\"playwright\").chromium.launchServer({ host: \"0.0.0.0\", port: 9222 })
+                      .then(s => console.log(\"WS_ENDPOINT:\" + s.wsEndpoint()));
+                  "'
+
+                echo "Waiting for the sidecar's browser server to report its wsEndpoint..."
+                line=""
+                for _ in $(seq 1 30); do
+                  line=$(docker logs playwright-browser-server 2>&1 | grep '^WS_ENDPOINT:' || true)
+                  [ -n "$line" ] && break
+                  sleep 1
+                done
+                if [ -z "$line" ]; then
+                  echo "::error::Playwright browser-server sidecar never reported a wsEndpoint"
+                  docker logs playwright-browser-server
+                  exit 1
+                fi
+
+                # The sidecar prints its own 0.0.0.0 bind address; reachable
+                # from another container on the same network by its own name.
+                ws_endpoint=$(echo "$line" | sed 's#^WS_ENDPOINT:ws://0.0.0.0#ws://playwright-browser-server#')
+                echo "PLAYWRIGHT_WS_ENDPOINT=$ws_endpoint" >> "$GITHUB_ENV"
+                echo "Sidecar ready at $ws_endpoint"
+
+            - name: Install the Playwright npm package for the Node bridge (no browsers)
+              # Step 3 correctly dropped installing Chromium here (the
+              # sidecar has it) — but wrongly also dropped installing the
+              # playwright npm package itself. The Node bridge
+              # playwright-php/playwright spawns still does
+              # require('playwright') regardless of connect-mode (it's the
+              # bridge process that needs the package, not a browser binary)
+              # — without it: DisconnectedException: Process exited with
+              # code 1. Confirmed the hard way against a real stack.
+              #
+              # Runs inside "app" now, not the runner host — matches wherever
+              # the Node bridge itself actually runs (step 3). Only the
+              # top-level copy needs this: step 4 dropped each package's own
+              # nested vendor/, so there's no second "per-package copy" to
+              # install into any more either.
+              #
+              # Version MUST match the sidecar's own Playwright version
+              # exactly (mcr.microsoft.com/playwright:v1.63.0-jammy above) —
+              # confirmed via a clean "Playwright version mismatch" error
+              # when these drifted.
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data \
+                  -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+                  app sh -c 'cd vendor/playwright-php/playwright/bin && npm install --no-audit --no-fund playwright@1.63.0'
+
+            - name: Generate PHPUnit config for Playwright tests
+              # Container-execution rework (step 4): each package's
+              # tests/playwright-tests-php is no longer its own composer
+              # project (ibexa/cohesivo-playwright dropped the nested
+              # vendor/composer.json/bootstrap.php) — it's just source now,
+              # autoloaded and run from the assembled project's own single
+              # vendor/, same as admin-ui's regular tests/ already are. No
+              # per-package "composer install" step needed any more either.
+              #
+              # Generated here, not committed by any one calling repo: no
+              # single repo "is" the assembled project — oss/headless/
+              # experience/commerce are all freshly assembled by ci-scripts,
+              # and admin-ui/user/product-catalog/etc. each trigger this same
+              # reusable workflow independently (this is one of many, not a
+              # special case) — a config committed by any single one of them
+              # couldn't express "whichever packages happen to be present in
+              # this particular edition", which inputs.test-package's own
+              # "empty = all packages with tests" already assumes is normal.
+              #
+              # bootstrap="tests/bootstrap.php", not "vendor/autoload.php":
+              # confirmed the hard way (EnvNotFoundException: DATABASE_CHARSET)
+              # against a real stack — plain vendor/autoload.php never loads
+              # .env, which the old per-package bootstrap.php used to do via
+              # (new Dotenv())->bootEnv(...) before step 4 deleted it.
+              # website-skeleton's own tests/bootstrap.php already does
+              # exactly that (it's what Behat/the project's own tests use),
+              # so this just reuses it rather than inventing a new one.
+              run: |
+                cd ${HOME}/build/project
+                {
+                  echo '<?xml version="1.0" encoding="UTF-8"?>'
+                  echo '<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+                  echo '         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"'
+                  echo '         bootstrap="tests/bootstrap.php"'
+                  echo '         colors="true">'
+                  echo '    <php>'
+                  echo '        <env name="KERNEL_CLASS" value="Ibexa\CohesivoPlaywright\Fixture\PlaywrightTestKernel"/>'
+                  echo '    </php>'
+                  echo '    <testsuites>'
+                  echo '        <testsuite name="playwright">'
+                  for dir in vendor/ibexa/*/tests/playwright-tests-php; do
+                    [ -d "$dir/Tests" ] || continue
+                    pkg=$(basename "$(dirname "$(dirname "$dir")")")
+                    if [ -n "$TEST_PACKAGE" ] && [ "$pkg" != "$TEST_PACKAGE" ]; then
+                      continue
+                    fi
+                    echo "            <directory>$dir/Tests</directory>"
+                  done
+                  echo '        </testsuite>'
+                  echo '    </testsuites>'
+                  echo '</phpunit>'
+                } > phpunit.playwright.xml
+
+                echo "Generated phpunit.playwright.xml:"
+                cat phpunit.playwright.xml
+              env:
+                TEST_PACKAGE: ${{ inputs.test-package }}
 
             - name: Run PHPUnit tests
-              # inputs passed via env, not interpolated, to avoid shell injection.
-              # Sharding (job-count > 1) uses vendor/bin/group-phpunit, shipped
-              # as a composer "bin" by ibexa/cohesivo-playwright.
+              # Container-execution rework (step 3): PHPUnit now runs inside
+              # "app" via docker compose exec, exactly like Behat already
+              # does — it automatically inherits the container's own,
+              # correct DATABASE_*/SEARCH_ENGINE/etc. environment, so none of
+              # the host-bridging this workflow used to need (hostname
+              # mapping, env copying) applies any more.
+              # PLAYWRIGHT_WS_ENDPOINT points IbexaPlaywrightTestCase's
+              # BrowserConnection at the sidecar instead of launching a local
+              # browser — see ibexa/cohesivo-playwright's step 2 draft.
+              #
+              # Sharding (job-count > 1) uses vendor/bin/group-phpunit,
+              # shipped as a composer "bin" by ibexa/cohesivo-playwright.
               # --group "$APP_EDITION" mirrors TS's EDITION_GREP/@IbexaOSS etc. tags.
               # APP_ENV inherits "behat" from the job env (not overridden to
               # "test" here): the assembled project's cache/bundles were built
               # for "behat", and some bundles (e.g. league_oauth2_server) are
               # only registered for environments ci-scripts explicitly allows.
+              #
+              # Runs from the assembled project's own root now, not a
+              # per-package subdirectory (step 4) — -c phpunit.playwright.xml
+              # (the config the previous step generated) already points at
+              # whichever package(s)' Tests/ directories belong in this run;
+              # which package(s) that means is TEST_PACKAGE's job at
+              # generation time, not this step's.
+              #
+              # inputs passed via -e, not interpolated into the inner shell
+              # string, to avoid shell injection.
               run: |
-                cd ${HOME}/build/project/vendor/ibexa/${TEST_PACKAGE:-admin-ui}/tests/playwright-tests-php
+                cd ${HOME}/build/project
                 if [ "$JOB_COUNT" -gt 1 ]; then
-                  vendor/bin/group-phpunit \
-                    --group-count="$JOB_COUNT" --group-offset="$SHARD_OFFSET" -- --group "$APP_EDITION" $TEST_SUITE
+                  docker compose --env-file=.env exec -T --user www-data \
+                    -e TEST_SUITE -e JOB_COUNT -e SHARD_OFFSET -e APP_URL -e APP_EDITION \
+                    -e ADMIN_LOGIN -e ADMIN_PASSWORD -e CI -e PLAYWRIGHT_WS_ENDPOINT \
+                    app sh -c 'vendor/bin/group-phpunit --group-count="$JOB_COUNT" --group-offset="$SHARD_OFFSET" -- -c phpunit.playwright.xml --group "$APP_EDITION" $TEST_SUITE'
                 else
-                  vendor/bin/phpunit --group "$APP_EDITION" $TEST_SUITE
+                  docker compose --env-file=.env exec -T --user www-data \
+                    -e TEST_SUITE -e APP_URL -e APP_EDITION \
+                    -e ADMIN_LOGIN -e ADMIN_PASSWORD -e CI -e PLAYWRIGHT_WS_ENDPOINT \
+                    app sh -c 'vendor/bin/phpunit -c phpunit.playwright.xml --group "$APP_EDITION" $TEST_SUITE'
                 fi
               env:
                 TEST_SUITE: ${{ inputs.test-suite }}
-                TEST_PACKAGE: ${{ inputs.test-package }}
                 JOB_COUNT: ${{ needs.setup-jobs.outputs.job-count }}
                 SHARD_OFFSET: ${{ matrix.offset }}
                 APP_URL: ${{ env.APP_URL }}
@@ -454,11 +477,15 @@ jobs:
 
             - name: Upload failure screenshots and traces
               if: always()
+              # IbexaPlaywrightTestCase::captureFailureArtifacts() writes to
+              # getcwd().'/var/log/playwright-failures' — PHPUnit now runs
+              # from the assembled project's own root (step 4), not a
+              # per-package subdirectory, so that's where this lands too.
               uses: actions/upload-artifact@v4
               with:
                   name: phpunit-playwright-failures-${{ inputs.project-edition }}-${{ inputs.artifact-suffix || inputs.test-package || 'all' }}-shard${{ matrix.offset }}-${{ github.run_id }}-${{ github.run_attempt }}
                   path: |
-                      /home/runner/build/project/vendor/ibexa/**/var/log/playwright-failures/
+                      /home/runner/build/project/var/log/playwright-failures/
                   retention-days: 14
 
             - if: always() && github.event_name != 'pull_request'
