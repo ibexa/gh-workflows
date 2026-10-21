@@ -240,11 +240,20 @@ jobs:
                 EOF
                   chmod 644 /home/runner/db-ci.cnf
 
+                  cat << 'EOF' > /home/runner/db-init.sql
+                GRANT ALL PRIVILEGES ON *.* TO 'ezp'@'%' WITH GRANT OPTION;
+                FLUSH PRIVILEGES;
+                EOF
+                  chmod 644 /home/runner/db-init.sql
+
                   cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
                 services:
                   db:
                     volumes:
                       - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
+                      - /home/runner/db-init.sql:/docker-entrypoint-initdb.d/99_ci_init.sql:ro
+                    environment:
+                      - MYSQL_ROOT_PASSWORD=pleasechangethis
                 volumes:
                   mysql:
                     driver: local
@@ -388,11 +397,20 @@ jobs:
                 EOF
                   chmod 644 /home/runner/db-ci.cnf
 
+                  cat << 'EOF' > /home/runner/db-init.sql
+                GRANT ALL PRIVILEGES ON *.* TO 'ezp'@'%' WITH GRANT OPTION;
+                FLUSH PRIVILEGES;
+                EOF
+                  chmod 644 /home/runner/db-init.sql
+
                   cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
                 services:
                   db:
                     volumes:
                       - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
+                      - /home/runner/db-init.sql:/docker-entrypoint-initdb.d/99_ci_init.sql:ro
+                    environment:
+                      - MYSQL_ROOT_PASSWORD=pleasechangethis
                 volumes:
                   mysql:
                     driver: local
@@ -409,6 +427,10 @@ jobs:
                 COMPOSE_FILE: "${{ inputs.setup }}:/home/runner/db-tmpfs.yml"
               run: |
                 cd ${HOME}/build/project
+                if [ -f vendor/ibexa/docker/templates/nginx/vhost.template ]; then
+                  mkdir -p doc/nginx
+                  cp -f vendor/ibexa/docker/templates/nginx/vhost.template doc/nginx/vhost.template
+                fi
                 docker compose --env-file=.env up -d
                 docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
                 docker compose --env-file=.env exec -T --user www-data app sh -c "php /scripts/wait_for_db.php"
@@ -448,8 +470,9 @@ jobs:
                         db_name="${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}_${p}"
                         user="${MYSQL_USER:-${DATABASE_USER:-ezp}}"
                         pass="${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"
+                        root_pass="${MYSQL_ROOT_PASSWORD:-pleasechangethis}"
                         cmd=$(command -v mariadb || command -v mysql)
-                        "$cmd" -u"$user" -p"$pass" -e "CREATE DATABASE IF NOT EXISTS \\`$db_name\\`; GRANT ALL PRIVILEGES ON \\`$db_name\\`.* TO \"$user\"@\"%\"; FLUSH PRIVILEGES;"
+                        "$cmd" -uroot -p"$root_pass" -e "CREATE DATABASE IF NOT EXISTS $db_name; GRANT ALL PRIVILEGES ON $db_name.* TO '$user'@'%'; FLUSH PRIVILEGES;" 2>/dev/null ||                         "$cmd" -u"$user" -p"$pass" -e "CREATE DATABASE IF NOT EXISTS $db_name;" 2>/dev/null || true
                         "$cmd" -u"$user" -p"$pass" "$db_name"
                       ' _ "$p" < db_dump.sql
                     done
