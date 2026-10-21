@@ -1,0 +1,616 @@
+name: Browser tests (Playwright)
+
+on:
+    workflow_call:
+        inputs:
+            project-edition:
+                description: "Project edition to set up: oss, headless, experience, commerce"
+                required: true
+                type: string
+            test-package:
+                description: "Run tests of a single package (e.g. admin-ui). Empty = all packages with tests (edition mode)."
+                required: false
+                type: string
+                default: ''
+            test-suite:
+                description: "Extra PHPUnit CLI args (e.g. --filter Trash)"
+                required: false
+                type: string
+                default: ''
+            project-version:
+                description: "Project version (e.g. 6.0.x-dev). If empty, inferred from branch alias."
+                required: false
+                type: string
+                default: ''
+            setup:
+                description: "Docker Compose files to use"
+                required: false
+                type: string
+                default: "doc/docker/base-dev.yml"
+            php-image:
+                description: "PHP Docker image to use"
+                required: false
+                type: string
+                default: "ghcr.io/ibexa/docker/php:8.5-node22"
+            ci-scripts-branch:
+                description: "Branch from ibexa/ci-scripts to use"
+                required: false
+                type: string
+                default: "main"
+            cohesivo-version:
+                description: "Composer version constraint for ibexa/cohesivo-playwright. Empty = match the project version (branch alias), or respect an existing pin from the calling repo's dependencies.json."
+                required: false
+                type: string
+                default: ""
+            app-url:
+                description: "URL under which the app is reachable from the runner host. Empty = derived from setup."
+                required: false
+                type: string
+                default: ""
+            artifact-suffix:
+                description: "Discriminator when one run calls this workflow several times for the same edition (e.g. 'pgsql18-varnish')"
+                required: false
+                type: string
+                default: ''
+            job-count:
+                description: "Number of jobs that will run the tests in parallel (bin/group-phpunit --group-count)"
+                required: false
+                type: number
+                default: 1
+            send-success-notification:
+                description: "Send a Slack notification when tests pass"
+                required: false
+                type: boolean
+                default: true
+            timeout:
+                description: "Job timeout in minutes"
+                required: false
+                type: number
+                default: 60
+        secrets:
+            SLACK_WEBHOOK_URL:
+                required: false
+            SATIS_NETWORK_KEY:
+                required: false
+            SATIS_NETWORK_TOKEN:
+                required: false
+            AUTOMATION_CLIENT_ID:
+                required: false
+            AUTOMATION_CLIENT_SECRET:
+                required: false
+            EZROBOT_33:
+                required: false
+            ADMIN_LOGIN:
+                required: false
+            ADMIN_PASSWORD:
+                required: false
+
+env:
+    # Reusing the established "behat" test env avoids patching ci-scripts'
+    # allow-list for a new name; dropping this falls back to "dev".
+    APP_ENV: behat
+    APP_DEBUG: 1
+    APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
+    PHP_INI_ENV_memory_limit: 1G
+    COMPOSER_CACHE_DIR: ~/.composer/cache
+
+jobs:
+    setup-jobs:
+        runs-on: ubuntu-latest
+        timeout-minutes: 1
+        outputs:
+            matrix: ${{ steps.generate-matrix.outputs.matrix }}
+            job-count: ${{ steps.generate-matrix.outputs.job-count }}
+        steps:
+            - name: Set job count for builds
+              run: echo "job_count=${{ inputs.job-count }}" >> $GITHUB_ENV
+            - name: Limit job-count to max 3 for PRs
+              if: github.event_name == 'pull_request'
+              run: |
+                if [[ "$job_count" -gt 3 ]] ; then
+                  job_count=3
+                fi
+                echo "job_count=$job_count" >> $GITHUB_ENV
+              env:
+                job_count: ${{ env.job_count }}
+            - name: Generate matrix
+              id: generate-matrix
+              run: |
+                matrix=$(jq -cn --argjson n "$job_count" '{offset: [range(0; $n)]}')
+                echo "matrix=$matrix" >> $GITHUB_OUTPUT
+                echo "job-count=$job_count" >> $GITHUB_OUTPUT
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
+                 \"}}]}" >> $GITHUB_ENV
+            - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
+              name: Send notification about workflow result
+              uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+              with:
+                  webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  webhook-type: incoming-webhook
+                  payload: ${{ env.SLACK_PAYLOAD }}
+
+    playwright-tests:
+        needs: setup-jobs
+        runs-on: ubuntu-latest
+        timeout-minutes: ${{ inputs.timeout }}
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJson(needs.setup-jobs.outputs.matrix) }}
+
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Derive app URL from setup
+              # Container-execution rework (step 3): the browser now runs in a
+              # sidecar container on the Compose network, not on the runner
+              # host, so this needs a Compose-network-internal address — the
+              # service's own name — instead of a host-published
+              # localhost:PORT. The varnish/no-varnish split (previously
+              # :8081 vs :8080, the two published host ports) becomes the
+              # varnish/web service name instead: a varnish-fronted stack
+              # navigates through varnish, same as a real browser hitting the
+              # edge would, everything else goes straight to the nginx "web"
+              # service. A caller passing an explicit app-url override is now
+              # expected to pass an internal address too.
+              run: |
+                if [ -n "$APP_URL" ]; then
+                  echo "APP_URL=$APP_URL" >> $GITHUB_ENV
+                elif echo "$SETUP" | grep -q varnish; then
+                  echo "APP_URL=http://varnish" >> $GITHUB_ENV
+                else
+                  echo "APP_URL=http://web" >> $GITHUB_ENV
+                fi
+              env:
+                APP_URL: ${{ inputs.app-url }}
+                SETUP: ${{ inputs.setup }}
+
+            - name: Set up project version
+              id: project-version
+              run: |
+                if [[ "$version" == "" ]] ; then
+                    echo "Input project version not set, taking the value from composer.json"
+                    version=$(cat composer.json | jq -r '.extra | ."branch-alias" | .[]')
+                fi
+                echo "version=$version" >> $GITHUB_OUTPUT
+              env:
+                version: ${{ inputs.project-version }}
+
+            - name: Derive host PHP version from php-image
+              # Container-execution rework (step 3): PHPUnit itself no longer
+              # runs on the runner host, so this no longer matters for test
+              # execution — kept only because the composer credential-config
+              # steps below ("Add composer keys...") still run bare composer
+              # commands on the host, before the containerized project exists.
+              id: host-php-version
+              run: |
+                version=$(echo "$PHP_IMAGE" | grep -oE '[0-9]+\.[0-9]+' | head -1)
+                echo "version=$version" >> $GITHUB_OUTPUT
+              env:
+                PHP_IMAGE: ${{ inputs.php-image }}
+
+            - name: Setup PHP Action
+              uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+              with:
+                  php-version: ${{ steps.host-php-version.outputs.version }}
+                  coverage: none
+
+            - name: Cache dependencies
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ${{ env.COMPOSER_CACHE_DIR }}
+                  key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
+                  restore-keys: |
+                    ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}
+
+            - name: Generate token
+              id: generate_token
+              if: env.AUTOMATION_CLIENT_ID != ''
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              with:
+                  app-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+                  owner: ibexa
+              env:
+                  AUTOMATION_CLIENT_ID: ${{ secrets.AUTOMATION_CLIENT_ID }}
+
+            - if: env.SATIS_NETWORK_KEY != ''
+              name: Add composer keys for private packagist
+              run: |
+                  composer config http-basic.updates.ibexa.co $SATIS_NETWORK_KEY $SATIS_NETWORK_TOKEN
+              env:
+                  SATIS_NETWORK_KEY: ${{ secrets.SATIS_NETWORK_KEY }}
+                  SATIS_NETWORK_TOKEN: ${{ secrets.SATIS_NETWORK_TOKEN }}
+
+            - name: Add composer key for GitHub App
+              if: ${{ steps.generate_token.outputs.token != '' }}
+              run: |
+                  composer config github-oauth.github.com $GITHUB_TOKEN
+              env:
+                  GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+            - if: startsWith(steps.project-version.outputs.version, 'v') == false
+              name: Set up whole project using the tested dependency (dev version)
+              # --proto '=https': SonarCloud S6506 — curl -L alone follows a
+              # redirect anywhere, including to plain http://; this refuses
+              # any redirect target that isn't https.
+              run: |
+                curl -L --proto '=https' "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ steps.project-version.outputs.version }}/prepare_project_edition.sh" > prepare_project_edition.sh
+                chmod +x prepare_project_edition.sh
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - if: startsWith(steps.project-version.outputs.version, 'v')
+              name: Set up whole project using a stable release
+              # --proto '=https': same as above.
+              run: |
+                curl -L --proto '=https' "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
+                chmod +x prepare_project_edition.sh
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+
+            - name: Add ibexa_integrated_help config
+              if: inputs.project-edition != 'oss'
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
+
+            # Data seeding happens in-process (Repository::sudo(), no REST) in each test's setUp().
+
+            - name: Install ibexa/cohesivo-playwright
+              run: |
+                cd ${HOME}/build/project
+                # Respect an existing pin from the package's own dependencies.json.
+                if [ -z "$COHESIVO_VERSION" ] && jq -e '(.require + ."require-dev")["ibexa/cohesivo-playwright"]' composer.json > /dev/null 2>&1; then
+                  echo "ibexa/cohesivo-playwright already pinned to $(jq -r '(.require + ."require-dev")["ibexa/cohesivo-playwright"]' composer.json) via dependencies.json, keeping it as-is"
+                  exit 0
+                fi
+                # empty cohesivo-version → match the project version (branch alias)
+                if [ -z "$COHESIVO_VERSION" ]; then
+                  COHESIVO_VERSION="$PROJECT_VERSION"
+                fi
+                echo "Installing ibexa/cohesivo-playwright:$COHESIVO_VERSION"
+                # TODO: drop the vcs repository once ibexa/cohesivo-playwright is published on updates.ibexa.co
+                docker compose --env-file=.env exec -T --user www-data -e GITHUB_TOKEN -e COHESIVO_VERSION app sh -c '
+                  composer config repositories.cohesivo-playwright vcs https://github.com/ibexa/cohesivo-playwright &&
+                  if [ -n "$GITHUB_TOKEN" ]; then composer config github-oauth.github.com "$GITHUB_TOKEN"; fi &&
+                  composer require --dev "ibexa/cohesivo-playwright:$COHESIVO_VERSION" --no-scripts --no-plugins'
+              env:
+                GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+                COHESIVO_VERSION: ${{ inputs.cohesivo-version }}
+                PROJECT_VERSION: ${{ steps.project-version.outputs.version }}
+
+            - name: Fix write permissions on project directory and composer cache
+              # ci-scripts mounts ~/.composer into the install_dependencies
+              # container and writes there as root — later host-side composer
+              # steps (the credential-config ones above, unprivileged runner
+              # user) need write access too.
+              run: |
+                sudo chmod -R a+rwX ${HOME}/build/project
+                sudo chmod -R a+rwX ${HOME}/.composer
+
+            - name: Start Playwright browser-server sidecar
+              # Container-execution rework (step 3): the actual browser now
+              # lives in its own container on the Compose network, instead of
+              # being launched locally by whichever process drives PHPUnit —
+              # confirmed working end-to-end in a local spike using
+              # playwright-php's own connect()/launchServer(). Chromium ships
+              # inside this image already, so there's no browser to install —
+              # the Node bridge itself still needs the playwright npm package,
+              # though; see "Install the Playwright npm package" below
+              # (replaces the old host-side "Install Playwright browsers" /
+              # "Smoke-test Chromium launch" steps between them).
+              #
+              # Plain `docker run`, not a Compose service: this reusable
+              # workflow doesn't own the setup's own Compose files (they live
+              # in a dependency none of the 4 repos in this PoC control), so
+              # joining the already-running stack's network directly avoids
+              # needing a 5th repo's cooperation just to add one container.
+              run: |
+                cd ${HOME}/build/project
+                network=$(docker inspect "$(docker compose --env-file=.env ps -q app)" \
+                  --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys[0]')
+
+                docker run -d --name playwright-browser-server --network "$network" -w /tmp \
+                  mcr.microsoft.com/playwright:v1.63.0-jammy \
+                  sh -c 'npm install --no-audit --no-fund playwright@1.63.0 && node -e "
+                    require(\"playwright\").chromium.launchServer({ host: \"0.0.0.0\", port: 9222 })
+                      .then(s => console.log(\"WS_ENDPOINT:\" + s.wsEndpoint()));
+                  "'
+
+                echo "Waiting for the sidecar's browser server to report its wsEndpoint..."
+                line=""
+                for _ in $(seq 1 30); do
+                  line=$(docker logs playwright-browser-server 2>&1 | grep '^WS_ENDPOINT:' || true)
+                  [ -n "$line" ] && break
+                  sleep 1
+                done
+                if [ -z "$line" ]; then
+                  echo "::error::Playwright browser-server sidecar never reported a wsEndpoint"
+                  docker logs playwright-browser-server
+                  exit 1
+                fi
+
+                # The sidecar prints its own 0.0.0.0 bind address; reachable
+                # from another container on the same network by its own name.
+                ws_endpoint=$(echo "$line" | sed 's#^WS_ENDPOINT:ws://0.0.0.0#ws://playwright-browser-server#')
+                echo "PLAYWRIGHT_WS_ENDPOINT=$ws_endpoint" >> "$GITHUB_ENV"
+                echo "Sidecar ready at $ws_endpoint"
+
+            - name: Install the Playwright npm package for the Node bridge (no browsers)
+              # Step 3 correctly dropped installing Chromium here (the
+              # sidecar has it) — but wrongly also dropped installing the
+              # playwright npm package itself. The Node bridge
+              # playwright-php/playwright spawns still does
+              # require('playwright') regardless of connect-mode (it's the
+              # bridge process that needs the package, not a browser binary)
+              # — without it: DisconnectedException: Process exited with
+              # code 1. Confirmed the hard way against a real stack.
+              #
+              # Runs inside "app" now, not the runner host — matches wherever
+              # the Node bridge itself actually runs (step 3). Only the
+              # top-level copy needs this: step 4 dropped each package's own
+              # nested vendor/, so there's no second "per-package copy" to
+              # install into any more either.
+              #
+              # Version MUST match the sidecar's own Playwright version
+              # exactly (mcr.microsoft.com/playwright:v1.63.0-jammy above) —
+              # confirmed via a clean "Playwright version mismatch" error
+              # when these drifted.
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T --user www-data \
+                  -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+                  app sh -c 'cd vendor/playwright-php/playwright/bin && npm install --no-audit --no-fund playwright@1.63.0'
+
+            - name: Generate PHPUnit config for Playwright tests
+              # Container-execution rework (step 4): each package's
+              # tests/playwright-tests-php is no longer its own composer
+              # project (ibexa/cohesivo-playwright dropped the nested
+              # vendor/composer.json/bootstrap.php) — it's just source now,
+              # autoloaded and run from the assembled project's own single
+              # vendor/, same as admin-ui's regular tests/ already are. No
+              # per-package "composer install" step needed any more either.
+              #
+              # Generated here, not committed by any one calling repo: no
+              # single repo "is" the assembled project — oss/headless/
+              # experience/commerce are all freshly assembled by ci-scripts,
+              # and admin-ui/user/product-catalog/etc. each trigger this same
+              # reusable workflow independently (this is one of many, not a
+              # special case) — a config committed by any single one of them
+              # couldn't express "whichever packages happen to be present in
+              # this particular edition", which inputs.test-package's own
+              # "empty = all packages with tests" already assumes is normal.
+              #
+              # bootstrap="tests/bootstrap.php", not "vendor/autoload.php":
+              # confirmed the hard way (EnvNotFoundException: DATABASE_CHARSET)
+              # against a real stack — plain vendor/autoload.php never loads
+              # .env, which the old per-package bootstrap.php used to do via
+              # (new Dotenv())->bootEnv(...) before step 4 deleted it.
+              # website-skeleton's own tests/bootstrap.php already does
+              # exactly that (it's what Behat/the project's own tests use),
+              # so this just reuses it rather than inventing a new one.
+              #
+              # When JOB_COUNT > 1, lists individual <file> entries
+              # pre-filtered to this edition instead of blanket <directory>
+              # entries, and "Run PHPUnit tests" below drops --group
+              # entirely for that case — ParaTest's --shard is confirmed
+              # broken when combined with --group (any group-based
+              # filtering, CLI flag or XML <groups> config alike: "No tests
+              # executed!" on every shard, empirically verified against a
+              # real multi-file suite and traced to SuiteLoader::
+              # shardTests() flattening the suite before
+              # TestSuiteFilterProcessor's group-membership lookup can run).
+              # Pre-filtering ourselves means --shard never needs --group at
+              # all. Grep'ing source text for the attribute is more fragile
+              # than PHPUnit's own group parsing (won't handle a
+              # differently-formatted #[Group(...)] attribute, e.g.
+              # multi-line) — if this ever silently selects zero or the
+              # wrong files, check the grep pattern here first.
+              run: |
+                cd ${HOME}/build/project
+                {
+                  echo '<?xml version="1.0" encoding="UTF-8"?>'
+                  echo '<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+                  echo '         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"'
+                  echo '         bootstrap="tests/bootstrap.php"'
+                  echo '         colors="true">'
+                  echo '    <php>'
+                  echo '        <env name="KERNEL_CLASS" value="Ibexa\CohesivoPlaywright\Fixture\PlaywrightTestKernel"/>'
+                  echo '    </php>'
+                  echo '    <testsuites>'
+                  echo '        <testsuite name="playwright">'
+                  for dir in vendor/ibexa/*/tests/playwright-tests-php; do
+                    [ -d "$dir/Tests" ] || continue
+                    pkg=$(basename "$(dirname "$(dirname "$dir")")")
+                    if [ -n "$TEST_PACKAGE" ] && [ "$pkg" != "$TEST_PACKAGE" ]; then
+                      continue
+                    fi
+                    if [ "$JOB_COUNT" -gt 1 ]; then
+                      grep -l "Group('$APP_EDITION')" "$dir"/Tests/*Test.php 2>/dev/null | sort | while IFS= read -r f; do
+                        echo "            <file>$f</file>"
+                      done
+                    else
+                      echo "            <directory>$dir/Tests</directory>"
+                    fi
+                  done
+                  echo '        </testsuite>'
+                  echo '    </testsuites>'
+                  echo '</phpunit>'
+                } > phpunit.playwright.xml
+
+                echo "Generated phpunit.playwright.xml:"
+                cat phpunit.playwright.xml
+              env:
+                TEST_PACKAGE: ${{ inputs.test-package }}
+                APP_EDITION: ${{ inputs.project-edition }}
+                JOB_COUNT: ${{ needs.setup-jobs.outputs.job-count }}
+
+            - name: Warm up the app before running Playwright tests
+              # Confirmed via real CI runs, recurring — not a one-off: the
+              # FIRST real browser navigation of the whole suite times out
+              # (Playwright\Exception\TimeoutException: JSON-RPC request 4
+              # timed out, on nothing more than loading the admin login
+              # page). The 30s default navigation timeout lands on Symfony's
+              # own first-request cost (DI container compilation, routing
+              # cache) for the behat env, now with a real network hop from
+              # the sidecar's browser to "web" added on top. Every other
+              # test (same env, already warm) passes under the same 30s
+              # ceiling every time — only the first one is at risk.
+              #
+              # A plain HTTP request from inside "app" pays that cold-start
+              # cost here instead, outside the Playwright-timeout-constrained
+              # path — more faithful to what the browser will actually hit
+              # than `bin/console cache:warmup` (asset/routing caches that
+              # only build lazily on a real request are easy to miss
+              # otherwise), and doesn't depend on which test happens to run
+              # first, unlike raising the timeout globally would.
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env exec -T -e APP_URL app sh -c \
+                  'curl -fsS -o /dev/null -w "warm-up request: HTTP %{http_code} in %{time_total}s\n" "$APP_URL/" || echo "warm-up request failed (non-fatal, best-effort) — the real test run below will surface the real error if the app truly is not ready"'
+              env:
+                APP_URL: ${{ env.APP_URL }}
+
+            - name: Run PHPUnit tests
+              # Container-execution rework (step 3): PHPUnit now runs inside
+              # "app" via docker compose exec, exactly like Behat already
+              # does — it automatically inherits the container's own,
+              # correct DATABASE_*/SEARCH_ENGINE/etc. environment, so none of
+              # the host-bridging this workflow used to need (hostname
+              # mapping, env copying) applies any more.
+              # PLAYWRIGHT_WS_ENDPOINT points IbexaPlaywrightTestCase's
+              # BrowserConnection at the sidecar instead of launching a local
+              # browser — see ibexa/cohesivo-playwright's step 2 draft.
+              #
+              # Sharding (job-count > 1) uses ParaTest's native --shard, not
+              # the custom ibexa/cohesivo-playwright group-phpunit script —
+              # reviewer feedback was to not roll our own for this (cohesivo-
+              # playwright PR #11). --shard is 1-based (confirmed from
+              # ParaTest's own source, Options.php: currentShard must be >
+              # 0), unlike this workflow's own 0-based matrix.offset — same
+              # +1 conversion this file already does for Slack's JOB_NUMBER.
+              #
+              # KNOWN BUG, confirmed empirically against a real test suite
+              # (4 tests, --shard alone: correctly split 2+2; --group alone:
+              # correctly filtered; --shard + --group together, CLI flag OR
+              # XML <groups> config: "No tests executed!" on every shard).
+              # Traced to SuiteLoader::shardTests() flattening the suite into
+              # bare Test objects before TestSuiteFilterProcessor runs —
+              # group-membership lookup needs the original nested
+              # class-level TestSuite structure the flattening destroys.
+              # --filter and --testsuite don't have this problem, only
+              # --group does. Worked around in "Generate PHPUnit config"
+              # above: when job-count > 1, that step pre-filters to this
+              # edition's files itself and lists them as explicit <file>
+              # entries, so --shard here never needs --group at all — it's
+              # dropped entirely from this branch's invocation below.
+              #
+              # -p 1 deliberately, not ParaTest's own "auto": --shard alone
+              # (splitting which tests run in which CI job, same as
+              # group-phpunit did) carries no new risk, but -p > 1 means
+              # multiple real PHP worker processes hitting the same live DB/
+              # search index/browser sidecar *concurrently*, not just
+              # sequentially across shards — TrashTest's fixture isolation
+              # (ContentFixtureFactory, millisecond-based naming) hasn't been
+              # verified safe under true concurrency yet. Confirmed the
+              # browser side is already fine either way: each worker's own
+              # Node bridge connects to the same sidecar wsEndpoint and gets
+              # its own isolated newContext(), which is what a browser
+              # process is for. Raise -p once fixture isolation is verified,
+              # as a deliberate follow-up, not bundled in here.
+              #
+              # --group "$APP_EDITION" mirrors TS's EDITION_GREP/@IbexaOSS etc. tags.
+              # APP_ENV inherits "behat" from the job env (not overridden to
+              # "test" here): the assembled project's cache/bundles were built
+              # for "behat", and some bundles (e.g. league_oauth2_server) are
+              # only registered for environments ci-scripts explicitly allows.
+              #
+              # Runs from the assembled project's own root now, not a
+              # per-package subdirectory (step 4) — -c phpunit.playwright.xml
+              # (the config the previous step generated) already points at
+              # whichever package(s)' Tests/ directories belong in this run;
+              # which package(s) that means is TEST_PACKAGE's job at
+              # generation time, not this step's.
+              #
+              # inputs passed via -e, not interpolated into the inner shell
+              # string, to avoid shell injection — only CURRENT_SHARD/
+              # JOB_COUNT (plain integers computed on the outer shell) are
+              # expanded directly into the --shard argument.
+              run: |
+                cd ${HOME}/build/project
+                if [ "$JOB_COUNT" -gt 1 ]; then
+                  CURRENT_SHARD=$((SHARD_OFFSET + 1))
+                  # No --group here: phpunit.playwright.xml's <file> entries
+                  # are already pre-filtered to $APP_EDITION (see "Generate
+                  # PHPUnit config" above) — adding --group on top would
+                  # reintroduce the --shard+--group bug this sidesteps.
+                  docker compose --env-file=.env exec -T --user www-data \
+                    -e TEST_SUITE -e APP_URL -e APP_EDITION \
+                    -e ADMIN_LOGIN -e ADMIN_PASSWORD -e CI -e PLAYWRIGHT_WS_ENDPOINT \
+                    app sh -c 'vendor/bin/paratest -p 1 -c phpunit.playwright.xml --shard="'"$CURRENT_SHARD"'/'"$JOB_COUNT"'" $TEST_SUITE'
+                else
+                  docker compose --env-file=.env exec -T --user www-data \
+                    -e TEST_SUITE -e APP_URL -e APP_EDITION \
+                    -e ADMIN_LOGIN -e ADMIN_PASSWORD -e CI -e PLAYWRIGHT_WS_ENDPOINT \
+                    app sh -c 'vendor/bin/paratest -p 1 -c phpunit.playwright.xml --group "$APP_EDITION" $TEST_SUITE'
+                fi
+              env:
+                TEST_SUITE: ${{ inputs.test-suite }}
+                JOB_COUNT: ${{ needs.setup-jobs.outputs.job-count }}
+                SHARD_OFFSET: ${{ matrix.offset }}
+                APP_URL: ${{ env.APP_URL }}
+                APP_EDITION: ${{ inputs.project-edition }}
+                ADMIN_LOGIN: ${{ secrets.ADMIN_LOGIN || 'admin' }}
+                ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'publish' }}
+                CI: true
+
+            - name: Upload failure screenshots and traces
+              if: always()
+              # IbexaPlaywrightTestCase::captureFailureArtifacts() writes to
+              # getcwd().'/var/log/playwright-failures' — PHPUnit now runs
+              # from the assembled project's own root (step 4), not a
+              # per-package subdirectory, so that's where this lands too.
+              uses: actions/upload-artifact@v4
+              with:
+                  name: phpunit-playwright-failures-${{ inputs.project-edition }}-${{ inputs.artifact-suffix || inputs.test-package || 'all' }}-shard${{ matrix.offset }}-${{ github.run_id }}-${{ github.run_attempt }}
+                  path: |
+                      /home/runner/build/project/var/log/playwright-failures/
+                  retention-days: 14
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message variables
+              run: |
+                echo "RESULT_EMOJI=:x:" >> $GITHUB_ENV
+                JOB_NUMBER=$(expr ${{ matrix.offset }} + 1)
+                echo "JOB_NUMBER=$JOB_NUMBER" >> $GITHUB_ENV
+
+            - if: always() && job.status == 'success' && github.event_name != 'pull_request'
+              name: Create Slack message success variables
+              run: |
+                echo "RESULT_EMOJI=:white_check_mark:" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request'
+              name: Create Slack message
+              run: >
+                 echo "SLACK_PAYLOAD=
+                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
+                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) | Playwright (PHP) |
+                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
+                 $JOB_NUMBER/${{ needs.setup-jobs.outputs.job-count }}
+                 \"}}]}" >> $GITHUB_ENV
+
+            - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
+              name: Send notification about workflow result
+              uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+              with:
+                  webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  webhook-type: incoming-webhook
+                  payload: ${{ env.SLACK_PAYLOAD }}
