@@ -312,12 +312,12 @@ jobs:
                 sudo chown -R $USER:$USER ${HOME}/build/project
                 rm -rf node_modules var/cache/*
                 mkdir -p /home/runner/archive
-                tar -czf /home/runner/archive/project.tar.gz -C ${HOME}/build project
+                tar -I 'zstd -3 -T0' -cf /home/runner/archive/project.tar.zst -C ${HOME}/build project
 
             - name: Save workspace cache
               uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
-                path: /home/runner/archive/project.tar.gz
+                path: /home/runner/archive/project.tar.zst
                 key: workspace-${{ steps.slug.outputs.build-id }}
 
             - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
@@ -354,14 +354,14 @@ jobs:
             - name: Restore workspace cache
               uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
-                path: /home/runner/archive/project.tar.gz
+                path: /home/runner/archive/project.tar.zst
                 key: workspace-${{ needs.build-project.outputs.build-id }}
                 fail-on-cache-miss: true
 
             - name: Extract workspace
               run: |
                 mkdir -p ${HOME}/build
-                tar -xzf /home/runner/archive/project.tar.gz -C ${HOME}/build
+                tar -I zstd -xf /home/runner/archive/project.tar.zst -C ${HOME}/build
                 rm -rf /home/runner/archive
 
             - name: Configure database CI optimizations (tmpfs & performance flags)
