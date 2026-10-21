@@ -296,11 +296,13 @@ jobs:
             - name: Dump database
               run: |
                 cd ${HOME}/build/project
+                sudo chown -R $USER:$USER ${HOME}/build/project
                 if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
-                  docker compose --env-file=.env exec -T db sh -c 'export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"; pg_dump --clean --if-exists -U "${POSTGRES_USER:-${DATABASE_USER:-ezp}}" "${POSTGRES_DB:-${DATABASE_NAME:-ezp}}"' > db_dump.sql
+                  docker compose --env-file=.env exec -T db sh -c 'export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"; pg_dump --clean --if-exists -U "${POSTGRES_USER:-${DATABASE_USER:-ezp}}" "${POSTGRES_DB:-${DATABASE_NAME:-ezp}}"' > /tmp/db_dump.sql
                 else
-                  docker compose --env-file=.env exec -T db sh -c 'mysqldump --no-tablespaces --add-drop-table -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' > db_dump.sql
+                  docker compose --env-file=.env exec -T db sh -c 'mysqldump --no-tablespaces --add-drop-table -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' > /tmp/db_dump.sql
                 fi
+                mv /tmp/db_dump.sql ./db_dump.sql
                 ls -lh db_dump.sql
 
             - name: Clean and package workspace
@@ -404,7 +406,6 @@ jobs:
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env up -d
-                docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
                 if [[ "${{ inputs.setup }}" == *"elastic"*.yml ]]; then
                     docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:elasticsearch:put-index-template"
                 fi
@@ -415,7 +416,8 @@ jobs:
                 else
                   docker compose --env-file=.env exec -T db sh -c 'mysql -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
                 fi
-                rm -f db_dump.sql
+                sudo rm -f db_dump.sql
+                docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
 
             - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with Solr
