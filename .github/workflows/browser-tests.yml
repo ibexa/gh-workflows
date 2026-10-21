@@ -314,13 +314,11 @@ jobs:
                 mkdir -p /home/runner/archive
                 tar -czf /home/runner/archive/project.tar.gz -C ${HOME}/build project
 
-            - name: Upload built workspace
-              uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+            - name: Save workspace cache
+              uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
-                name: workspace-${{ steps.slug.outputs.build-id }}
                 path: /home/runner/archive/project.tar.gz
-                retention-days: 1
-                if-no-files-found: error
+                key: workspace-${{ steps.slug.outputs.build-id }}
 
             - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
               name: Send notification about workflow result
@@ -353,11 +351,12 @@ jobs:
               name: "[Varnish] Set the URL the tests should access"
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
 
-            - name: Download built workspace
-              uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+            - name: Restore workspace cache
+              uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
-                name: workspace-${{ needs.build-project.outputs.build-id }}
-                path: /home/runner/archive
+                path: /home/runner/archive/project.tar.gz
+                key: workspace-${{ needs.build-project.outputs.build-id }}
+                fail-on-cache-miss: true
 
             - name: Extract workspace
               run: |
@@ -538,30 +537,3 @@ jobs:
                   webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
                   webhook-type: incoming-webhook
                   payload: ${{ env.SLACK_PAYLOAD }}
-
-    cleanup-workspace:
-        runs-on: blacksmith-2vcpu-ubuntu-2404
-        needs: [build-project, browser-tests]
-        if: always() && needs.build-project.result == 'success' && needs.browser-tests.result == 'success'
-        permissions:
-            actions: write
-        timeout-minutes: 5
-        steps:
-            - name: Delete workspace artifact
-              continue-on-error: true
-              env:
-                GH_TOKEN: ${{ github.token }}
-                BUILD_ID: ${{ needs.build-project.outputs.build-id }}
-              run: |
-                ARTIFACT_NAME="workspace-$BUILD_ID"
-                echo "Looking for artifact $ARTIFACT_NAME in run $GITHUB_RUN_ID..."
-                ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
-                  --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .id" 2>/dev/null || true)
-                if [ -n "$ARTIFACT_ID" ]; then
-                  echo "Deleting artifact $ARTIFACT_NAME (ID: $ARTIFACT_ID)..."
-                  gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" || true
-                  echo "Artifact deleted successfully."
-                else
-                  echo "Artifact $ARTIFACT_NAME not found or already deleted."
-                fi
-
