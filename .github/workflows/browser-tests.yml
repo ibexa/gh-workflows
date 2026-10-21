@@ -405,6 +405,7 @@ jobs:
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env up -d
+                docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
                 if [[ "${{ inputs.setup }}" == *"elastic"*.yml ]]; then
                     docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:elasticsearch:put-index-template"
                 fi
@@ -416,7 +417,6 @@ jobs:
                   docker compose --env-file=.env exec -T db sh -c 'RESTORE_CMD=$(command -v mariadb || command -v mysql); "$RESTORE_CMD" -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
                 fi
                 sudo rm -f db_dump.sql
-                docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
 
             - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with Solr
