@@ -146,7 +146,7 @@ jobs:
                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
-                \"}}]}" >> $GITHUB_ENV
+                \"}}}]" >> $GITHUB_ENV
             - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
               name: Send notification about workflow result
               uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
@@ -155,19 +155,20 @@ jobs:
                 webhook-type: incoming-webhook
                 payload: ${{ env.SLACK_PAYLOAD }}
 
-    browser-tests:
-        needs: setup-jobs
+    build-project:
         runs-on: blacksmith-2vcpu-ubuntu-2404
-        timeout-minutes: ${{ inputs.timeout }}
-        strategy:
-          fail-fast: false
-          matrix: ${{ fromJson(needs.setup-jobs.outputs.matrix) }}
+        timeout-minutes: 20
+        outputs:
+          build-id: ${{ steps.slug.outputs.build-id }}
+          project-version: ${{ steps.project-version.outputs.version }}
         steps:
-            - if: contains(inputs.setup, 'varnish')
-              name: "[Varnish] Set the URL the tests should access"
-              run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
-
             - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1
+
+            - name: Generate build identifier
+              id: slug
+              run: |
+                HASH=$(echo -n "${{ inputs.project-edition }}_${{ inputs.test-suite }}_${{ inputs.setup }}_${{ inputs.php-image }}_${{ github.sha }}" | sha256sum | cut -c1-16)
+                echo "build-id=${{ inputs.project-edition }}-$HASH" >> $GITHUB_OUTPUT
 
             - name: Set up project version
               id: project-version
@@ -289,6 +290,115 @@ jobs:
                 docker compose --env-file=.env exec -T app sh -c "composer recipes:install ibexa/compatibility-layer --force"
                 docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
 
+            - name: Clean and package workspace
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env down -v
+                sudo chown -R $USER:$USER ${HOME}/build/project
+                rm -rf node_modules var/cache/*
+                mkdir -p /home/runner/archive
+                tar -czf /home/runner/archive/project.tar.gz -C ${HOME}/build project
+
+            - name: Upload built workspace
+              uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+              with:
+                name: workspace-${{ steps.slug.outputs.build-id }}
+                path: /home/runner/archive/project.tar.gz
+                retention-days: 1
+                if-no-files-found: error
+
+            - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
+              name: Send notification about workflow result
+              uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+              with:
+                webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+                webhook-type: incoming-webhook
+                payload: |
+                  {
+                    "blocks": [
+                      {
+                        "type": "section",
+                        "text": {
+                          "type": "mrkdwn",
+                          "text": ":x: *${{ github.repository }}*:*${{ github.ref_name }}* (${{ github.actor }}) | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Details> | Build project failed"
+                        }
+                      }
+                    ]
+                  }
+
+    browser-tests:
+        needs: [setup-jobs, build-project]
+        runs-on: blacksmith-2vcpu-ubuntu-2404
+        timeout-minutes: ${{ inputs.timeout }}
+        strategy:
+          fail-fast: false
+          matrix: ${{ fromJson(needs.setup-jobs.outputs.matrix) }}
+        steps:
+            - if: contains(inputs.setup, 'varnish')
+              name: "[Varnish] Set the URL the tests should access"
+              run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
+
+            - name: Download built workspace
+              uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+              with:
+                name: workspace-${{ needs.build-project.outputs.build-id }}
+                path: /home/runner/archive
+
+            - name: Extract workspace
+              run: |
+                mkdir -p ${HOME}/build
+                tar -xzf /home/runner/archive/project.tar.gz -C ${HOME}/build
+                rm -rf /home/runner/archive
+
+            - name: Configure database CI optimizations (tmpfs & performance flags)
+              run: |
+                if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
+                services:
+                  db:
+                    environment:
+                      - POSTGRES_INITDB_ARGS=--no-sync
+                    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+                EOF
+                else
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-ci.cnf
+                [mysqld]
+                innodb_flush_log_at_trx_commit = 0
+                sync_binlog = 0
+                innodb_doublewrite = 0
+                EOF
+                  chmod 644 /home/runner/db-ci.cnf
+
+                  cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
+                services:
+                  db:
+                    volumes:
+                      - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
+                volumes:
+                  mysql:
+                    driver: local
+                    driver_opts:
+                      type: tmpfs
+                      device: tmpfs
+                      o: "size=3072m"
+                EOF
+                fi
+
+            - name: Start docker containers and install database
+              env:
+                PHP_IMAGE: ${{ inputs.php-image }}
+                COMPOSE_FILE: "${{ inputs.setup }}:/home/runner/db-tmpfs.yml"
+              run: |
+                cd ${HOME}/build/project
+                docker compose --env-file=.env up -d
+                docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
+                if [[ "${{ inputs.setup }}" == *"elastic"*.yml ]]; then
+                    docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:elasticsearch:put-index-template"
+                fi
+                docker compose --env-file=.env exec -T --user www-data app sh -c "php /scripts/wait_for_db.php; php bin/console ibexa:install --skip-indexing --no-interaction"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:reindex"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:graphql:generate-schema"
+
             - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with Solr
               run: |
@@ -299,7 +409,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c 'php bin/console cache:pool:clear ${CACHE_POOL:-cache.tagaware.filesystem}'
                 # Run setup
                 docker compose exec -T --user www-data app sh -c "vendor/bin/ibexabehat --mode=standard --profile=setup --suite=multirepository -c=\$([ -f behat_ibexa_oss.php ] && echo behat_ibexa_oss.php || echo behat_ibexa_oss.yaml) --tags=~@elastic"
-                if [[ "${{ steps.project-version.outputs.version }}" == *'5.0.x-dev'* ]]; then
+                if [[ "${{ needs.build-project.outputs.project-version }}" == *'5.0.x-dev'* ]]; then
                   docker compose exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
                 else
                   docker compose exec -T --user www-data app sh -c "composer run post-install-cmd"
@@ -317,7 +427,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c 'php bin/console cache:pool:clear ${CACHE_POOL:-cache.tagaware.filesystem}'
                 # Run setup
                 docker compose exec -T --user www-data app sh -c "vendor/bin/ibexabehat --mode=standard --profile=setup --suite=multirepository -c=\$([ -f behat_ibexa_oss.php ] && echo behat_ibexa_oss.php || echo behat_ibexa_oss.yaml) --tags=~@solr"
-                if [[ "${{ steps.project-version.outputs.version }}" == *'5.0.x-dev'* ]]; then
+                if [[ "${{ needs.build-project.outputs.project-version }}" == *'5.0.x-dev'* ]]; then
                   docker compose exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
                 else
                   docker compose exec -T --user www-data app sh -c "composer run post-install-cmd"
@@ -335,7 +445,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c 'php bin/console cache:pool:clear ${CACHE_POOL:-cache.tagaware.filesystem}'
                 # Run setup
                 docker compose exec -T --user www-data app sh -c "vendor/bin/ibexabehat --mode=standard --profile=setup --suite=multirepository -c=\$([ -f behat_ibexa_oss.php ] && echo behat_ibexa_oss.php || echo behat_ibexa_oss.yaml) --tags=@multirepository"
-                if [[ "${{ steps.project-version.outputs.version }}" == *'5.0.x-dev'* ]]; then
+                if [[ "${{ needs.build-project.outputs.project-version }}" == *'5.0.x-dev'* ]]; then
                   docker compose exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
                 else
                   docker compose exec -T --user www-data app sh -c "composer run post-install-cmd"
@@ -344,7 +454,7 @@ jobs:
                 docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
             - name: Add ibexa_integrated_help config
-              if: inputs.project-edition != 'oss' && !contains(steps.project-version.outputs.version, '3.3')
+              if: inputs.project-edition != 'oss' && !contains(needs.build-project.outputs.project-version, '3.3')
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "printf 'ibexa_integrated_help:\n    enabled: false\n' > config/packages/ibexa_integrated_help.yaml"
@@ -354,7 +464,7 @@ jobs:
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-1 }}"
-                if [[ "${{ steps.project-version.outputs.version }}" == *'5.0.x-dev'* ]]; then
+                if [[ "${{ needs.build-project.outputs.project-version }}" == *'5.0.x-dev'* ]]; then
                   docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
                 else
                   docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
@@ -365,7 +475,7 @@ jobs:
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data app sh -c "vendor/bin/ibexabehat ${{ inputs.test-setup-phase-2 }}"
-                if [[ "${{ steps.project-version.outputs.version }}" == *'5.0.x-dev'* ]]; then
+                if [[ "${{ needs.build-project.outputs.project-version }}" == *'5.0.x-dev'* ]]; then
                   docker compose --env-file=.env exec -T --user www-data app sh -c "NODE_OPTIONS='--max-old-space-size=3072' composer run post-install-cmd"
                 else
                   docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
@@ -396,7 +506,7 @@ jobs:
                  $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
                  <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
                  $JOB_NUMBER/${{ inputs.job-count }}
-                 \"}}]}" >> $GITHUB_ENV
+                 \"}}}]" >> $GITHUB_ENV
 
             - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
               name: Send notification about workflow result
