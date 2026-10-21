@@ -240,18 +240,11 @@ jobs:
                 EOF
                   chmod 644 /home/runner/db-ci.cnf
 
-                  cat << 'EOF' > /home/runner/db-init.sql
-                GRANT ALL PRIVILEGES ON *.* TO 'ezp'@'%' WITH GRANT OPTION;
-                FLUSH PRIVILEGES;
-                EOF
-                  chmod 644 /home/runner/db-init.sql
-
                   cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
                 services:
                   db:
                     volumes:
                       - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
-                      - /home/runner/db-init.sql:/docker-entrypoint-initdb.d/99_ci_init.sql:ro
                     environment:
                       - MYSQL_ROOT_PASSWORD=pleasechangethis
                 volumes:
@@ -397,18 +390,11 @@ jobs:
                 EOF
                   chmod 644 /home/runner/db-ci.cnf
 
-                  cat << 'EOF' > /home/runner/db-init.sql
-                GRANT ALL PRIVILEGES ON *.* TO 'ezp'@'%' WITH GRANT OPTION;
-                FLUSH PRIVILEGES;
-                EOF
-                  chmod 644 /home/runner/db-init.sql
-
                   cat << 'EOF' | sed 's/^                //' > /home/runner/db-tmpfs.yml
                 services:
                   db:
                     volumes:
                       - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
-                      - /home/runner/db-init.sql:/docker-entrypoint-initdb.d/99_ci_init.sql:ro
                     environment:
                       - MYSQL_ROOT_PASSWORD=pleasechangethis
                 volumes:
