@@ -538,3 +538,30 @@ jobs:
                   webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
                   webhook-type: incoming-webhook
                   payload: ${{ env.SLACK_PAYLOAD }}
+
+    cleanup-workspace:
+        runs-on: blacksmith-2vcpu-ubuntu-2404
+        needs: [build-project, browser-tests]
+        if: always() && needs.build-project.result == 'success'
+        permissions:
+            actions: write
+        timeout-minutes: 5
+        steps:
+            - name: Delete workspace artifact
+              continue-on-error: true
+              env:
+                GH_TOKEN: ${{ github.token }}
+                BUILD_ID: ${{ needs.build-project.outputs.build-id }}
+              run: |
+                ARTIFACT_NAME="workspace-$BUILD_ID"
+                echo "Looking for artifact $ARTIFACT_NAME in run $GITHUB_RUN_ID..."
+                ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+                  --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .id" 2>/dev/null || true)
+                if [ -n "$ARTIFACT_ID" ]; then
+                  echo "Deleting artifact $ARTIFACT_NAME (ID: $ARTIFACT_ID)..."
+                  gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" || true
+                  echo "Artifact deleted successfully."
+                else
+                  echo "Artifact $ARTIFACT_NAME not found or already deleted."
+                fi
+
