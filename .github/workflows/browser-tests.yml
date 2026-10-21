@@ -160,18 +160,12 @@ jobs:
 
     build-project:
         runs-on: blacksmith-2vcpu-ubuntu-2404
-        timeout-minutes: 20
+        timeout-minutes: ${{ inputs.timeout }}
         outputs:
           build-id: ${{ steps.slug.outputs.build-id }}
           project-version: ${{ steps.project-version.outputs.version }}
         steps:
             - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1
-
-            - name: Generate build identifier
-              id: slug
-              run: |
-                HASH=$(echo -n "${{ inputs.project-edition }}_${{ inputs.test-suite }}_${{ inputs.setup }}_${{ inputs.php-image }}_${{ github.sha }}" | sha256sum | cut -c1-16)
-                echo "build-id=${{ inputs.project-edition }}-$HASH" >> $GITHUB_OUTPUT
 
             - name: Set up project version
               id: project-version
@@ -186,6 +180,12 @@ jobs:
                 echo "version=$version" >> $GITHUB_OUTPUT
               env:
                 version: ${{ inputs.project-version }}
+
+            - name: Generate build identifier
+              id: slug
+              run: |
+                HASH=$(echo -n "${{ inputs.project-edition }}_${{ steps.project-version.outputs.version }}_${{ inputs.test-suite }}_${{ inputs.setup }}_${{ inputs.php-image }}_${{ inputs.ci-scripts-branch }}_${{ inputs.use-compatibility-layer }}_${{ inputs.install-connector-quable }}_${{ inputs.multirepository }}_${{ github.sha }}_${{ github.run_id }}_${{ github.run_attempt }}" | sha256sum | cut -c1-16)
+                echo "build-id=${{ inputs.project-edition }}-$HASH" >> $GITHUB_OUTPUT
 
             - name: Check Composer version
               run: composer --version
@@ -310,6 +310,11 @@ jobs:
                 cd ${HOME}/build/project
                 docker compose --env-file=.env down -v
                 sudo chown -R $USER:$USER ${HOME}/build/project
+                # Scrub credentials and transient caches before caching
+                find . -name "auth.json" -delete
+                rm -f .env.local .env.*.local
+                find . -name ".npmrc" -delete
+                find . -name ".yarnrc" -delete
                 rm -rf node_modules var/cache/*
                 mkdir -p /home/runner/archive
                 tar -I 'zstd -3 -T0' -cf /home/runner/archive/project.tar.zst -C ${HOME}/build project
@@ -406,17 +411,37 @@ jobs:
                 cd ${HOME}/build/project
                 docker compose --env-file=.env up -d
                 docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
-                if [[ "${{ inputs.setup }}" == *"elastic"*.yml ]]; then
-                    docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:elasticsearch:put-index-template"
-                fi
                 docker compose --env-file=.env exec -T --user www-data app sh -c "php /scripts/wait_for_db.php"
                 echo "> Restoring database dump"
                 if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
-                  docker compose --env-file=.env exec -T db sh -c 'export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"; psql -U "${POSTGRES_USER:-${DATABASE_USER:-ezp}}" -d "${POSTGRES_DB:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
+                  docker compose --env-file=.env exec -T db sh -c 'export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"; psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-${DATABASE_USER:-ezp}}" -d "${POSTGRES_DB:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
                 else
                   docker compose --env-file=.env exec -T db sh -c 'RESTORE_CMD=$(command -v mariadb || command -v mysql); "$RESTORE_CMD" -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
                 fi
                 sudo rm -f db_dump.sql
+
+                if [[ "${{ inputs.setup }}" == *"elastic"* ]]; then
+                  echo "> Setting up Elasticsearch index template and reindexing"
+                  for i in $(seq 1 30); do
+                    if docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:elasticsearch:put-index-template"; then
+                      break
+                    fi
+                    echo "Waiting for Elasticsearch to become ready... (attempt $i)"
+                    sleep 2
+                  done
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:reindex"
+                fi
+
+                if [[ "${{ inputs.setup }}" == *"solr"* ]]; then
+                  echo "> Reindexing Solr"
+                  for i in $(seq 1 30); do
+                    if docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:reindex"; then
+                      break
+                    fi
+                    echo "Waiting for Solr to become ready... (attempt $i)"
+                    sleep 2
+                  done
+                fi
 
             - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with Solr
