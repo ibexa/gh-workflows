@@ -550,7 +550,8 @@ jobs:
                       user="${POSTGRES_USER:-${DATABASE_USER:-ezp}}"
                       export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"
                       psql -U "$user" -d postgres -v db="$base_db" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = :'db' AND pid <> pg_backend_pid();" 2>/dev/null || true
-                      psql -U "$user" -d postgres -c "DROP DATABASE IF EXISTS \"$db_name\"; CREATE DATABASE \"$db_name\" WITH TEMPLATE \"$base_db\";" 2>/dev/null
+                      psql -U "$user" -d postgres -c "DROP DATABASE IF EXISTS \"$db_name\";" 2>/dev/null || true
+                      psql -U "$user" -d postgres -c "CREATE DATABASE \"$db_name\" WITH TEMPLATE \"$base_db\";" 2>/dev/null
                     ' _ "$p" || (
                       docker compose --env-file=.env exec -T db sh -c '
                         p="$1"
@@ -558,7 +559,8 @@ jobs:
                         db_name="${base_db}_${p}"
                         user="${POSTGRES_USER:-${DATABASE_USER:-ezp}}"
                         export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"
-                        psql -U "$user" -d postgres -c "DROP DATABASE IF EXISTS \"$db_name\"; CREATE DATABASE \"$db_name\";"
+                        psql -U "$user" -d postgres -c "DROP DATABASE IF EXISTS \"$db_name\";" 2>/dev/null || true
+                        psql -U "$user" -d postgres -c "CREATE DATABASE \"$db_name\";"
                         pg_dump -U "$user" "$base_db" | psql -v ON_ERROR_STOP=1 -U "$user" -d "$db_name"
                       ' _ "$p"
                     )
