@@ -141,12 +141,15 @@ jobs:
                 echo "RESULT_EMOJI=❌" >> $GITHUB_ENV
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message
-              run: >
-                echo "SLACK_PAYLOAD=
-                {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
-                $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
-                <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details>
-                \"}}}]" >> $GITHUB_ENV
+              run: |
+                PAYLOAD=$(jq -n -c \
+                  --arg emoji "$RESULT_EMOJI" \
+                  --arg repo "$GITHUB_REPOSITORY" \
+                  --arg ref "$GITHUB_REF_NAME" \
+                  --arg actor "$GITHUB_ACTOR" \
+                  --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+                  '{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "\($emoji) *\($repo)*:*\($ref)* (\($actor)) | <\($url)|Details> | Setup jobs failed"}}]}')
+                echo "SLACK_PAYLOAD=$PAYLOAD" >> $GITHUB_ENV
             - if: always() && github.event_name != 'pull_request' && job.status != 'success' && job.status != 'skipped'
               name: Send notification about workflow result
               uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
@@ -290,6 +293,16 @@ jobs:
                 docker compose --env-file=.env exec -T app sh -c "composer recipes:install ibexa/compatibility-layer --force"
                 docker compose --env-file=.env exec -T --user www-data app sh -c "composer run post-install-cmd"
 
+            - name: Dump database
+              run: |
+                cd ${HOME}/build/project
+                if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
+                  docker compose --env-file=.env exec -T db sh -c 'export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"; pg_dump --clean --if-exists -U "${POSTGRES_USER:-${DATABASE_USER:-ezp}}" "${POSTGRES_DB:-${DATABASE_NAME:-ezp}}"' > db_dump.sql
+                else
+                  docker compose --env-file=.env exec -T db sh -c 'mysqldump --no-tablespaces --add-drop-table -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' > db_dump.sql
+                fi
+                ls -lh db_dump.sql
+
             - name: Clean and package workspace
               run: |
                 cd ${HOME}/build/project
@@ -384,7 +397,7 @@ jobs:
                 EOF
                 fi
 
-            - name: Start docker containers and install database
+            - name: Start docker containers and restore database
               env:
                 PHP_IMAGE: ${{ inputs.php-image }}
                 COMPOSE_FILE: "${{ inputs.setup }}:/home/runner/db-tmpfs.yml"
@@ -395,9 +408,14 @@ jobs:
                 if [[ "${{ inputs.setup }}" == *"elastic"*.yml ]]; then
                     docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:elasticsearch:put-index-template"
                 fi
-                docker compose --env-file=.env exec -T --user www-data app sh -c "php /scripts/wait_for_db.php; php bin/console ibexa:install --skip-indexing --no-interaction"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:reindex"
-                docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:graphql:generate-schema"
+                docker compose --env-file=.env exec -T --user www-data app sh -c "php /scripts/wait_for_db.php"
+                echo "> Restoring database dump"
+                if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
+                  docker compose --env-file=.env exec -T db sh -c 'export PGPASSWORD="${POSTGRES_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"; psql -U "${POSTGRES_USER:-${DATABASE_USER:-ezp}}" -d "${POSTGRES_DB:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
+                else
+                  docker compose --env-file=.env exec -T db sh -c 'mysql -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
+                fi
+                rm -f db_dump.sql
 
             - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with Solr
@@ -500,13 +518,16 @@ jobs:
 
             - if: always() && github.event_name != 'pull_request'
               name: Create Slack message
-              run: >
-                 echo "SLACK_PAYLOAD=
-                 {\"blocks\": [{\"type\": \"section\",\"text\": {\"type\": \"mrkdwn\",\"text\": \"
-                 $RESULT_EMOJI *$GITHUB_REPOSITORY*:*$GITHUB_REF_NAME* ($GITHUB_ACTOR) |
-                 <$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|Details> |
-                 $JOB_NUMBER/${{ inputs.job-count }}
-                 \"}}}]" >> $GITHUB_ENV
+              run: |
+                PAYLOAD=$(jq -n -c \
+                  --arg emoji "$RESULT_EMOJI" \
+                  --arg repo "$GITHUB_REPOSITORY" \
+                  --arg ref "$GITHUB_REF_NAME" \
+                  --arg actor "$GITHUB_ACTOR" \
+                  --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+                  --arg job "$JOB_NUMBER/${{ inputs.job-count }}" \
+                  '{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "\($emoji) *\($repo)*:*\($ref)* (\($actor)) | <\($url)|Details> | \($job)"}}]}')
+                echo "SLACK_PAYLOAD=$PAYLOAD" >> $GITHUB_ENV
 
             - if: always() && github.event_name != 'pull_request' && (job.status != 'success' || inputs.send-success-notification)
               name: Send notification about workflow result
