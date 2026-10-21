@@ -246,6 +246,7 @@ jobs:
                     volumes:
                       - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
                     environment:
+                      - MYSQL_RANDOM_ROOT_PASSWORD=
                       - MYSQL_ROOT_PASSWORD=pleasechangethis
                 volumes:
                   mysql:
@@ -396,6 +397,7 @@ jobs:
                     volumes:
                       - /home/runner/db-ci.cnf:/etc/mysql/conf.d/ci.cnf:ro
                     environment:
+                      - MYSQL_RANDOM_ROOT_PASSWORD=
                       - MYSQL_ROOT_PASSWORD=pleasechangethis
                 volumes:
                   mysql:
@@ -458,7 +460,7 @@ jobs:
                         pass="${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"
                         root_pass="${MYSQL_ROOT_PASSWORD:-pleasechangethis}"
                         cmd=$(command -v mariadb || command -v mysql)
-                        "$cmd" -uroot -p"$root_pass" -e "CREATE DATABASE IF NOT EXISTS $db_name; GRANT ALL PRIVILEGES ON $db_name.* TO '$user'@'%'; FLUSH PRIVILEGES;" 2>/dev/null ||                         "$cmd" -u"$user" -p"$pass" -e "CREATE DATABASE IF NOT EXISTS $db_name;" 2>/dev/null || true
+                        "$cmd" -uroot -p"$root_pass" -e "CREATE DATABASE IF NOT EXISTS \`$db_name\`; GRANT ALL PRIVILEGES ON \`$db_name\`.* TO \`$user\`@\`%\`; FLUSH PRIVILEGES;" 2>/dev/null ||                         "$cmd" -u"$user" -p"$pass" -e "CREATE DATABASE IF NOT EXISTS \`$db_name\`;" 2>/dev/null || true
                         "$cmd" -u"$user" -p"$pass" "$db_name"
                       ' _ "$p" < db_dump.sql
                     done
