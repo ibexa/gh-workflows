@@ -418,6 +418,43 @@ jobs:
                 else
                   docker compose --env-file=.env exec -T db sh -c 'RESTORE_CMD=$(command -v mariadb || command -v mysql); "$RESTORE_CMD" -u"${MYSQL_USER:-${DATABASE_USER:-ezp}}" -p"${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}" "${MYSQL_DATABASE:-${DATABASE_NAME:-ezp}}"' < db_dump.sql
                 fi
+
+                if [ "${{ inputs.process-count }}" -gt 1 ]; then
+                  echo "> Cloning database for ${{ inputs.process-count }} parallel processes"
+                  if [[ "${{ inputs.setup }}" == *"postgresql"* ]]; then
+                    for p in $(seq 1 "${{ inputs.process-count }}"); do
+                      echo ">> Preparing PostgreSQL channel database: channel $p"
+                      docker compose --env-file=.env exec -T db sh -c '
+                        p="$1"
+                        db_name="${{POSTGRES_DB:-${{DATABASE_NAME:-ezp}}}}_${p}"
+                        base_db="${{POSTGRES_DB:-${{DATABASE_NAME:-ezp}}}}"
+                        user="${{POSTGRES_USER:-${{DATABASE_USER:-ezp}}}}"
+                        export PGPASSWORD="${{POSTGRES_PASSWORD:-${{DATABASE_PASSWORD:-pleasechangethis}}}}"
+                        psql -U "$user" -c "DROP DATABASE IF EXISTS \"$db_name\"; CREATE DATABASE \"$db_name\" WITH TEMPLATE \"$base_db\";" 2>/dev/null
+                      ' _ "$p" ||                       (docker compose --env-file=.env exec -T db sh -c '
+                        p="$1"
+                        db_name="${{POSTGRES_DB:-${{DATABASE_NAME:-ezp}}}}_${p}"
+                        user="${{POSTGRES_USER:-${{DATABASE_USER:-ezp}}}}"
+                        export PGPASSWORD="${{POSTGRES_PASSWORD:-${{DATABASE_PASSWORD:-pleasechangethis}}}}"
+                        psql -U "$user" -c "CREATE DATABASE \"$db_name\";"
+                        psql -v ON_ERROR_STOP=1 -U "$user" -d "$db_name"
+                      ' _ "$p" < db_dump.sql)
+                    done
+                  else
+                    for p in $(seq 1 "${{ inputs.process-count }}"); do
+                      echo ">> Preparing MySQL/MariaDB channel database: channel $p"
+                      docker compose --env-file=.env exec -T db sh -c '
+                        p="$1"
+                        db_name="${{MYSQL_DATABASE:-${{DATABASE_NAME:-ezp}}}}_${p}"
+                        user="${{MYSQL_USER:-${{DATABASE_USER:-ezp}}}}"
+                        pass="${{MYSQL_PASSWORD:-${{DATABASE_PASSWORD:-pleasechangethis}}}}"
+                        cmd=$(command -v mariadb || command -v mysql)
+                        "$cmd" -u"$user" -p"$pass" -e "CREATE DATABASE IF NOT EXISTS \\`$db_name\\`; GRANT ALL PRIVILEGES ON \\`$db_name\\`.* TO \"$user\"@\"%\"; FLUSH PRIVILEGES;"
+                        "$cmd" -u"$user" -p"$pass" "$db_name"
+                      ' _ "$p" < db_dump.sql
+                    done
+                  fi
+                fi
                 sudo rm -f db_dump.sql
 
                 if [[ "${{ inputs.setup }}" == *"elastic"* ]]; then
