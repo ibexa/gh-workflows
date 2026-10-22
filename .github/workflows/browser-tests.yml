@@ -430,6 +430,45 @@ jobs:
                 fi
                 sudo rm -f db_dump.sql
 
+            - name: Initialize search engine index
+              if: contains(inputs.setup, 'elastic') || contains(inputs.setup, 'solr')
+              run: |
+                cd ${HOME}/build/project
+                if [[ "${{ inputs.setup }}" == *"elastic"* ]]; then
+                  echo "> Setting up Elasticsearch index template and reindexing"
+                  READY=0
+                  for i in $(seq 1 30); do
+                    if docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:elasticsearch:put-index-template"; then
+                      READY=1
+                      break
+                    fi
+                    echo "Waiting for Elasticsearch to become ready... (attempt $i)"
+                    sleep 2
+                  done
+                  if [ "$READY" -ne 1 ]; then
+                    echo "Failed to initialize Elasticsearch index template"
+                    exit 1
+                  fi
+                  docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:reindex"
+                fi
+
+                if [[ "${{ inputs.setup }}" == *"solr"* ]]; then
+                  echo "> Reindexing Solr"
+                  READY=0
+                  for i in $(seq 1 30); do
+                    if docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:reindex"; then
+                      READY=1
+                      break
+                    fi
+                    echo "Waiting for Solr to become ready... (attempt $i)"
+                    sleep 2
+                  done
+                  if [ "$READY" -ne 1 ]; then
+                    echo "Failed to reindex Solr"
+                    exit 1
+                  fi
+                fi
+
             - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
               name: Set up multirepository build with Solr
               run: |
@@ -530,13 +569,19 @@ jobs:
 
                 if [[ "${{ inputs.setup }}" == *"solr"* ]]; then
                   echo "> Reindexing Solr"
+                  READY=0
                   for i in $(seq 1 30); do
                     if docker compose --env-file=.env exec -T --user www-data app sh -c "php bin/console ibexa:reindex"; then
+                      READY=1
                       break
                     fi
                     echo "Waiting for Solr to become ready... (attempt $i)"
                     sleep 2
                   done
+                  if [ "$READY" -ne 1 ]; then
+                    echo "Failed to reindex Solr"
+                    exit 1
+                  fi
                 fi
 
             - name: Clone database for parallel test processes
