@@ -572,7 +572,7 @@ jobs:
                     pass="${MYSQL_PASSWORD:-${DATABASE_PASSWORD:-pleasechangethis}}"
                     root_pass="${MYSQL_ROOT_PASSWORD:-pleasechangethis}"
                     dump_cmd=$(command -v mariadb-dump || command -v mysqldump)
-                    "$dump_cmd" -uroot -p"$root_pass" "$base_db" > /tmp/base_db.sql 2>/dev/null || "$dump_cmd" -u"$user" -p"$pass" "$base_db" > /tmp/base_db.sql
+                    "$dump_cmd" --single-transaction --quick -uroot -p"$root_pass" "$base_db" > /tmp/base_db.sql 2>/dev/null || "$dump_cmd" --single-transaction --quick -u"$user" -p"$pass" "$base_db" > /tmp/base_db.sql
                   '
                   for p in $(seq 1 "${{ inputs.process-count }}"); do
                     echo ">> Preparing MySQL/MariaDB channel database: channel $p"
