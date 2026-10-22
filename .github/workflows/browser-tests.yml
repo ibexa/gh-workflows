@@ -419,6 +419,11 @@ jobs:
                   mkdir -p doc/nginx
                   cp -f vendor/ibexa/docker/templates/nginx/vhost.template doc/nginx/vhost.template
                 fi
+                if [ -f vendor/ibexa/docker/scripts/vhost.sh ]; then
+                  mkdir -p bin
+                  cp -f vendor/ibexa/docker/scripts/vhost.sh bin/vhost.sh
+                  chmod +x bin/vhost.sh
+                fi
                 docker compose --env-file=.env up -d
                 docker compose --env-file=.env exec -T app sh -c 'chown -R www-data:www-data /var/www'
                 docker compose --env-file=.env exec -T --user www-data app sh -c "php /scripts/wait_for_db.php"
