@@ -34,8 +34,8 @@ on:
                 required: false
                 type: boolean
             php-image:
-                default: "ghcr.io/ibexa/docker/php:8.3-node22"
-                description: "The PHP image to use"
+                default: ""
+                description: "The PHP image to use, defaults to the image matching the project version"
                 required: false
                 type: string
             ci-scripts-branch:
@@ -177,6 +177,22 @@ jobs:
               env:
                 version: ${{ inputs.project-version }}
 
+            - name: Set up PHP image
+              id: php-image
+              run: |
+                if [[ "$image" == "" ]] ; then
+                    # 5.0 requires Node 24 (CKEditor 48), 4.6 stays on Node 22
+                    if [[ "$version" == 5.0* || "$version" == v5.0* ]] ; then
+                        image="ghcr.io/ibexa/docker/php:8.3-node24"
+                    else
+                        image="ghcr.io/ibexa/docker/php:8.3-node22"
+                    fi
+                fi
+                echo "image=$image" >> $GITHUB_OUTPUT
+              env:
+                image: ${{ inputs.php-image }}
+                version: ${{ steps.project-version.outputs.version }}
+
             - name: Setup PHP Action
               uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
               with:
@@ -192,9 +208,9 @@ jobs:
               uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
                   path: ${{ env.COMPOSER_CACHE_DIR }}
-                  key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
+                  key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ steps.php-image.outputs.image }}-${{ github.sha }}
                   restore-keys: |
-                    ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}
+                    ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ steps.php-image.outputs.image }}
 
             - name: Generate token
               id: generate_token
@@ -224,7 +240,7 @@ jobs:
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ steps.project-version.outputs.version }}/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ steps.php-image.outputs.image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
@@ -239,7 +255,7 @@ jobs:
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }} ${{ steps.php-image.outputs.image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
