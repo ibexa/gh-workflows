@@ -32,6 +32,11 @@ on:
                 required: false
                 type: string
                 default: "ghcr.io/ibexa/docker/php:8.5-node22"
+            playwright-version:
+                description: "Exact Playwright version (e.g. 1.63.0) for both the browser-server sidecar image and the Node bridge's npm package — connect() requires them to match"
+                required: false
+                type: string
+                default: "1.63.0"
             ci-scripts-branch:
                 description: "Branch from ibexa/ci-scripts to use"
                 required: false
@@ -314,13 +319,19 @@ jobs:
               # joining the already-running stack's network directly avoids
               # needing a 5th repo's cooperation just to add one container.
               run: |
+                if ! echo "$PLAYWRIGHT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+                  echo "::error::playwright-version must be an exact x.y.z version, got '$PLAYWRIGHT_VERSION'"
+                  exit 1
+                fi
+
                 cd ${HOME}/build/project
                 network=$(docker inspect "$(docker compose --env-file=.env ps -q app)" \
                   --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys[0]')
 
                 docker run -d --name playwright-browser-server --network "$network" -w /tmp \
-                  mcr.microsoft.com/playwright:v1.63.0-jammy \
-                  sh -c 'npm install --no-audit --no-fund playwright@1.63.0 && node -e "
+                  -e PLAYWRIGHT_VERSION \
+                  "mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-jammy" \
+                  sh -c 'npm install --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION" && node -e "
                     require(\"playwright\").chromium.launchServer({ host: \"0.0.0.0\", port: 9222 })
                       .then(s => console.log(\"WS_ENDPOINT:\" + s.wsEndpoint()));
                   "'
@@ -343,6 +354,8 @@ jobs:
                 ws_endpoint=$(echo "$line" | sed 's#^WS_ENDPOINT:ws://0.0.0.0#ws://playwright-browser-server#')
                 echo "PLAYWRIGHT_WS_ENDPOINT=$ws_endpoint" >> "$GITHUB_ENV"
                 echo "Sidecar ready at $ws_endpoint"
+              env:
+                PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
 
             - name: Install the Playwright npm package for the Node bridge (no browsers)
               # Step 3 correctly dropped installing Chromium here (the
@@ -361,14 +374,16 @@ jobs:
               # install into any more either.
               #
               # Version MUST match the sidecar's own Playwright version
-              # exactly (mcr.microsoft.com/playwright:v1.63.0-jammy above) —
-              # confirmed via a clean "Playwright version mismatch" error
-              # when these drifted.
+              # exactly — both come from inputs.playwright-version (already
+              # validated by the sidecar step) — confirmed via a clean
+              # "Playwright version mismatch" error when these drifted.
               run: |
                 cd ${HOME}/build/project
                 docker compose --env-file=.env exec -T --user www-data \
-                  -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-                  app sh -c 'cd vendor/playwright-php/playwright/bin && npm install --no-audit --no-fund playwright@1.63.0'
+                  -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 -e PLAYWRIGHT_VERSION \
+                  app sh -c 'cd vendor/playwright-php/playwright/bin && npm install --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION"'
+              env:
+                PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
 
             - name: Generate PHPUnit config for Playwright tests
               # Container-execution rework (step 4): each package's
@@ -409,13 +424,52 @@ jobs:
               # shardTests() flattening the suite before
               # TestSuiteFilterProcessor's group-membership lookup can run).
               # Pre-filtering ourselves means --shard never needs --group at
-              # all. Grep'ing source text for the attribute is more fragile
-              # than PHPUnit's own group parsing (won't handle a
-              # differently-formatted #[Group(...)] attribute, e.g.
-              # multi-line) — if this ever silently selects zero or the
-              # wrong files, check the grep pattern here first.
+              # all. The grep accepts single or double quotes and inner
+              # whitespace (#[Group('commerce')], #[Group( "commerce" )],
+              # #[Group('oss'), Group('commerce')]) and matches the edition
+              # name exactly ('commerce-extra' doesn't count) — but it's
+              # still source text, not PHPUnit's own parsing: a #[Group(...)]
+              # split across lines won't match.
+              #
+              # Fails on an empty selection instead of letting it pass:
+              # PHPUnit/ParaTest exit 0 for an empty <testsuite> under
+              # --shard (verified), so a pattern miss or a wrong
+              # test-package would otherwise show up as green. Fewer files
+              # than shards only warns — ParaTest shards per file, so the
+              # surplus shards legitimately run nothing.
               run: |
                 cd ${HOME}/build/project
+
+                pattern="Group\([[:space:]]*['\"]${APP_EDITION}['\"][[:space:]]*\)"
+                selected="${RUNNER_TEMP}/playwright-selected-tests.txt"
+                : > "$selected"
+                for dir in vendor/ibexa/*/tests/playwright-tests-php; do
+                  [ -d "$dir/Tests" ] || continue
+                  pkg=$(basename "$(dirname "$(dirname "$dir")")")
+                  if [ -n "$TEST_PACKAGE" ] && [ "$pkg" != "$TEST_PACKAGE" ]; then
+                    continue
+                  fi
+                  if [ "$JOB_COUNT" -gt 1 ]; then
+                    { grep -lE "$pattern" "$dir"/Tests/*Test.php 2>/dev/null || true; } | sort >> "$selected"
+                  else
+                    echo "$dir/Tests" >> "$selected"
+                  fi
+                done
+
+                count=$(grep -c . "$selected" || true)
+                if [ "$count" -eq 0 ]; then
+                  if [ "$JOB_COUNT" -gt 1 ]; then
+                    echo "::error::No test files tagged #[Group('$APP_EDITION')] found${TEST_PACKAGE:+ in $TEST_PACKAGE} — refusing to run an empty suite"
+                  else
+                    echo "::error::No tests/playwright-tests-php/Tests directory found${TEST_PACKAGE:+ for $TEST_PACKAGE} — refusing to run an empty suite"
+                  fi
+                  exit 1
+                fi
+                if [ "$JOB_COUNT" -gt 1 ] && [ "$count" -lt "$JOB_COUNT" ]; then
+                  echo "::warning::Only $count test file(s) for $JOB_COUNT shards — $((JOB_COUNT - count)) shard(s) will run no tests"
+                fi
+
+                if [ "$JOB_COUNT" -gt 1 ]; then element='file'; else element='directory'; fi
                 {
                   echo '<?xml version="1.0" encoding="UTF-8"?>'
                   echo '<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
@@ -427,20 +481,9 @@ jobs:
                   echo '    </php>'
                   echo '    <testsuites>'
                   echo '        <testsuite name="playwright">'
-                  for dir in vendor/ibexa/*/tests/playwright-tests-php; do
-                    [ -d "$dir/Tests" ] || continue
-                    pkg=$(basename "$(dirname "$(dirname "$dir")")")
-                    if [ -n "$TEST_PACKAGE" ] && [ "$pkg" != "$TEST_PACKAGE" ]; then
-                      continue
-                    fi
-                    if [ "$JOB_COUNT" -gt 1 ]; then
-                      grep -l "Group('$APP_EDITION')" "$dir"/Tests/*Test.php 2>/dev/null | sort | while IFS= read -r f; do
-                        echo "            <file>$f</file>"
-                      done
-                    else
-                      echo "            <directory>$dir/Tests</directory>"
-                    fi
-                  done
+                  while IFS= read -r path; do
+                    echo "            <$element>$path</$element>"
+                  done < "$selected"
                   echo '        </testsuite>'
                   echo '    </testsuites>'
                   echo '</phpunit>'
@@ -529,9 +572,10 @@ jobs:
               #
               # --group "$APP_EDITION" mirrors TS's EDITION_GREP/@IbexaOSS etc. tags.
               # APP_ENV inherits "behat" from the job env (not overridden to
-              # "test" here): the assembled project's cache/bundles were built
-              # for "behat", and some bundles (e.g. league_oauth2_server) are
-              # only registered for environments ci-scripts explicitly allows.
+              # "test" here): the assembled project's cache was built for
+              # "behat", and config/bundles.php enables some bundles only for
+              # specific envs (e.g. IbexaDebugBundle: dev/test/behat). Using
+              # "behat" is a CI convention for now, not a hard requirement.
               #
               # Runs from the assembled project's own root now, not a
               # per-package subdirectory (step 4) — -c phpunit.playwright.xml
