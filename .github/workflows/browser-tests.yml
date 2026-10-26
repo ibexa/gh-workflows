@@ -181,7 +181,7 @@ jobs:
               id: php-image
               run: |
                 if [[ "$image" == "" ]] ; then
-                    # 5.0 requires Node 24 (CKEditor 48), 4.6 stays on Node 22
+                    # 5.0 requires Node 24 (CKEditor 48), other versions keep the previous default
                     if [[ "$version" == 5.0* || "$version" == v5.0* ]] ; then
                         image="ghcr.io/ibexa/docker/php:8.3-node24"
                     else
