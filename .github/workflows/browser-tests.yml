@@ -100,6 +100,12 @@ env:
     APP_SECRET: '2d4218d7b6c69a9f88da7b8986e64717b3c40948a7ba2b1ca309dc292472286d'
     PHP_INI_ENV_memory_limit: 1G
     COMPOSER_CACHE_DIR: ~/.composer/cache
+    # Default PHP images per product version, anything not listed uses the fallback
+    PHP_IMAGES: >-
+        {
+            "5.0": "ghcr.io/ibexa/docker/php:8.3-node24",
+            "6.0": "ghcr.io/ibexa/docker/php:8.5-node24"
+        }
 
 jobs:
     setup-jobs:
@@ -174,24 +180,15 @@ jobs:
                     version="^3.3.x-dev"
                 fi
                 echo "version=$version" >> $GITHUB_OUTPUT
+                echo "minor=$(grep -oE '[0-9]+\.[0-9]+' <<< "$version" | head -n 1)" >> $GITHUB_OUTPUT
               env:
                 version: ${{ inputs.project-version }}
 
             - name: Set up PHP image
               id: php-image
-              run: |
-                if [[ "$image" == "" ]] ; then
-                    # 5.0 requires Node 24 (CKEditor 48), other versions keep the previous default
-                    if [[ "$version" == 5.0* || "$version" == v5.0* ]] ; then
-                        image="ghcr.io/ibexa/docker/php:8.3-node24"
-                    else
-                        image="ghcr.io/ibexa/docker/php:8.3-node22"
-                    fi
-                fi
-                echo "image=$image" >> $GITHUB_OUTPUT
+              run: echo "image=$image" >> $GITHUB_OUTPUT
               env:
-                image: ${{ inputs.php-image }}
-                version: ${{ steps.project-version.outputs.version }}
+                image: ${{ inputs.php-image || fromJSON(env.PHP_IMAGES)[steps.project-version.outputs.minor] || 'ghcr.io/ibexa/docker/php:8.3-node22' }}
 
             - name: Setup PHP Action
               uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
