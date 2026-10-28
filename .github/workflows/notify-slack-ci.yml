@@ -35,12 +35,17 @@ jobs:
             - name: Decide whether to notify
               id: decision
               env:
+                  BRANCH: ${{ github.event.workflow_run.head_branch }}
                   CONCLUSION: ${{ github.event.workflow_run.conclusion }}
                   EVENT: ${{ github.event.workflow_run.event }}
                   ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
                   SEND_SUCCESS: ${{ inputs.send-success-notification }}
               run: |
-                  if [ "$CONCLUSION" != "success" ]; then
+                  if [[ ! "$BRANCH" =~ ^([0-9]+\.[0-9]+|main|master)$ ]]; then
+                      # The channel monitors stable branches only. A feature
+                      # branch run concerns its author, whatever the result.
+                      notify=false
+                  elif [ "$CONCLUSION" != "success" ]; then
                       # Failures (and cancellations) are always reported
                       notify=true
                   elif [ "$SEND_SUCCESS" = "auto" ]; then
