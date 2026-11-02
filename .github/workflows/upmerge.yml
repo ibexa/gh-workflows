@@ -14,23 +14,17 @@ jobs:
   merge:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App Token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: generate_token
+      - name: Generate GitHub App token and configure git
+        id: bot
+        uses: ibexa/gh-workflows/actions/app-git-identity@main
         with:
           client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
-          owner: ${{ github.repository_owner }}
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          token: ${{ steps.generate_token.outputs.token }}
-
-      - name: Set environment
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com>"
+          token: ${{ steps.bot.outputs.token }}
 
       - name: Inject slug/short variables
         uses: rlespinasse/github-slug-action@e6f261660910b273384c5c42b17a0217881b217a # v5.6.0
@@ -49,7 +43,7 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
         env:
-          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.bot.outputs.token }}
 
       # Parse json and find destination branch and repository
       - name: Set variables
@@ -81,7 +75,7 @@ jobs:
         with:
           ref: ${{ env.DEST_BRANCH }}
           fetch-depth: 0
-          token: ${{ steps.generate_token.outputs.token }}
+          token: ${{ steps.bot.outputs.token }}
 
       - name: Perform Upmerge of ${{ env.SOURCE_BRANCH }} to ${{ env.DEST_BRANCH }}
         if: ${{ steps.destinations.outputs.destination }}
