@@ -1,5 +1,34 @@
 # Ibexa GitHub Workflows
 
+## Actions
+
+### `app-git-identity`
+
+Generates an installation token for the Ibexa Workflow Automation GitHub App and configures
+git so that the commits made later in the job are authored by the App's bot user. Use it in
+jobs that commit, tag or push to branches protected by the repository rulesets. The default
+`GITHUB_TOKEN` cannot push there.
+
+```yaml
+steps:
+    -   uses: ibexa/gh-workflows/actions/app-git-identity@main
+        id: bot
+        with:
+            client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+            private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+
+    -   uses: actions/checkout@v7
+        with:
+            token: ${{ steps.bot.outputs.token }}
+
+    -   run: |
+            git commit -m "..."
+            git push
+```
+
+Outputs: `token`, `app-slug`, `user-id`, `user-name`, `user-email`. The identity is set with
+`git config --global`, so it applies to every repository checked out in the job.
+
 ## COPYRIGHT
 Copyright (C) 1999-2025 Ibexa AS (formerly eZ Systems AS). All rights reserved.
 
