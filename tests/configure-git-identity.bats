@@ -2,7 +2,7 @@
 
 load test_helper
 
-SCRIPT="$BATS_TEST_DIRNAME/../actions/app-git-identity/configure-git-identity.bash"
+SCRIPT="$BATS_TEST_DIRNAME/../actions/setup-app-git-identity/configure-git-identity.bash"
 
 setup() {
     setup_stub_path
