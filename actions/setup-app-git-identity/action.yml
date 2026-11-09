@@ -1,0 +1,55 @@
+name: "Generate a GitHub App token and configure the git identity of the App"
+author: 'Ibexa AS'
+description: >-
+    Generates an installation token for the Ibexa Workflow Automation GitHub App and
+    configures git so that the commits made later in the job are authored by the App's
+    bot user. Use it in jobs that commit, tag or push to branches protected by the
+    repository rulesets, then pass the token to actions/checkout.
+
+inputs:
+    gh-client-id:
+        description: 'GitHub App client ID'
+        required: true
+    gh-client-secret:
+        description: 'GitHub App private key'
+        required: true
+    owner:
+        description: 'Owner of the App installation the token is generated for'
+        required: false
+        default: ${{ github.repository_owner }}
+
+outputs:
+    token:
+        description: 'Installation token, pass it to actions/checkout and to gh'
+        value: ${{ steps.generate_token.outputs.token }}
+    app-slug:
+        description: 'Slug of the GitHub App'
+        value: ${{ steps.generate_token.outputs.app-slug }}
+    user-id:
+        description: 'Numeric id of the App bot user'
+        value: ${{ steps.identity.outputs.user-id }}
+    user-name:
+        description: 'Git user.name configured by the action, <slug>[bot]'
+        value: ${{ steps.identity.outputs.user-name }}
+    user-email:
+        description: 'Git user.email configured by the action, <id>+<slug>[bot]@users.noreply.github.com'
+        value: ${{ steps.identity.outputs.user-email }}
+
+runs:
+    using: "composite"
+    steps:
+        -   name: Generate GitHub App token
+            id: generate_token
+            uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+            with:
+                client-id: ${{ inputs.gh-client-id }}
+                private-key: ${{ inputs.gh-client-secret }}
+                owner: ${{ inputs.owner }}
+
+        -   name: Configure the git identity of the App
+            id: identity
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/configure-git-identity.bash"
+            env:
+                APP_SLUG: ${{ steps.generate_token.outputs.app-slug }}
+                GH_TOKEN: ${{ steps.generate_token.outputs.token }}
