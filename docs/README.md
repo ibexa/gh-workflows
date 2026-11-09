@@ -1,4 +1,6 @@
-# Actions
+# Ibexa GitHub Workflows
+
+## Actions
 
 Composite actions published by this repository, used as `ibexa/gh-workflows/actions/<name>@main`.
 
@@ -11,7 +13,7 @@ Composite actions published by this repository, used as `ibexa/gh-workflows/acti
 - `setup-composer-root-version`
 - `yarn-test`
 
-## `setup-app-git-identity`
+### `setup-app-git-identity`
 
 Generates an installation token for the Ibexa Workflow Automation GitHub App and configures
 git so that the commits made later in the job are authored by the App's bot user. Use it in
