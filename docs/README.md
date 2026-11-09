@@ -142,8 +142,9 @@ to `false`, which stops after `composer update` and `composer validate`), `git-p
 (defaults to `ibexa/release-maker`).
 
 The steps, each in its own script under `actions/create-metapackage-tag/`: fetch the release
-map, set the minimum stability from the version suffix, pin the listed packages, patch the
-remaining `require` versions from the map, update the lock file, then commit, tag and push.
+map, set the minimum stability from the version suffix, pin the listed packages to `version`,
+patch every `require` entry present in the map (pinned packages included, so on overlap the
+map wins), update the lock file, then commit, tag and push.
 
 ### `frontend-install`
 
