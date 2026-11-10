@@ -1,0 +1,149 @@
+name: Regenerate PHPUnit baselines
+
+# Regenerates the PHPUnit deprecation baselines of the calling repository on every given PHP version,
+# without deprecations triggered by third-party code calling into third-party code, and commits the
+# union to the dispatched branch. Stable branches (e.g. 6.0) get a pull request instead of a push.
+# Meant to be called from a workflow_dispatch workflow: regenerating is a deliberate, reviewed action.
+
+on:
+    workflow_call:
+        inputs:
+            php-versions:
+                description: >-
+                    JSON array of PHP versions to generate the baselines on, e.g. ["8.5", "8.6"].
+                    When empty, the versions are inferred from the package's branch-alias.
+                required: false
+                default: ''
+                type: string
+        secrets:
+            AUTOMATION_CLIENT_ID:
+                required: true
+            AUTOMATION_CLIENT_SECRET:
+                required: true
+            SATIS_NETWORK_KEY:
+                required: false
+            SATIS_NETWORK_TOKEN:
+                required: false
+
+jobs:
+    php-versions:
+        name: Resolve PHP versions
+        runs-on: "ubuntu-26.04"
+        outputs:
+            php-versions: ${{ steps.resolve.outputs.php-versions }}
+
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            # Keep in line with the backend CI matrix of each product version.
+            - id: resolve
+              env:
+                  PHP_VERSIONS: ${{ inputs.php-versions }}
+              run: |
+                  if [[ -z "$PHP_VERSIONS" ]]; then
+                      BRANCH_ALIAS=$(jq -r '[.extra."branch-alias"[]][0]' composer.json)
+                      case "$BRANCH_ALIAS" in
+                          6.0.x-dev) PHP_VERSIONS='["8.5"]' ;;
+                          5.0.x-dev) PHP_VERSIONS='["8.3", "8.4"]' ;;
+                          4.6.x-dev) PHP_VERSIONS='["7.4", "8.1", "8.3", "8.4"]' ;;
+                          *)
+                              echo "::error::No PHP versions known for branch-alias '${BRANCH_ALIAS}', pass php-versions explicitly."
+                              exit 1
+                              ;;
+                      esac
+                  fi
+
+                  echo "PHP versions: ${PHP_VERSIONS}"
+                  echo "php-versions=${PHP_VERSIONS}" >> "$GITHUB_OUTPUT"
+
+    generate:
+        name: Generate on PHP ${{ matrix.php }}
+        needs: php-versions
+        runs-on: "ubuntu-26.04"
+        strategy:
+            fail-fast: true
+            matrix:
+                php: ${{ fromJSON(needs.php-versions.outputs.php-versions) }}
+
+        steps:
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - uses: ibexa/gh-workflows/actions/setup-composer-root-version@main
+
+            - uses: ibexa/gh-workflows/actions/composer-install@main
+              with:
+                  php-version: ${{ matrix.php }}
+                  gh-client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  gh-client-secret: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+                  satis-network-key: ${{ secrets.SATIS_NETWORK_KEY }}
+                  satis-network-token: ${{ secrets.SATIS_NETWORK_TOKEN }}
+
+            - uses: ibexa/gh-workflows/actions/phpunit-baseline@main
+              with:
+                  command: generate
+                  directory: ${{ runner.temp }}/phpunit-baseline
+
+            - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: phpunit-baseline-${{ matrix.php }}
+                  path: ${{ runner.temp }}/phpunit-baseline
+                  if-no-files-found: error
+
+    commit:
+        name: Commit baselines
+        needs: [php-versions, generate]
+        runs-on: "ubuntu-26.04"
+
+        steps:
+            # An App token, unlike GITHUB_TOKEN, triggers CI on the pushed commit.
+            - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              id: generate_token
+              with:
+                  client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  private-key: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+                  owner: ${{ github.repository_owner }}
+
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  token: ${{ steps.generate_token.outputs.token }}
+
+            - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+              with:
+                  php-version: ${{ fromJSON(needs.php-versions.outputs.php-versions)[0] }}
+                  coverage: none
+
+            - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+              with:
+                  pattern: phpunit-baseline-*
+                  path: ${{ runner.temp }}/phpunit-baseline
+
+            - uses: ibexa/gh-workflows/actions/phpunit-baseline@main
+              with:
+                  command: merge
+                  directory: ${{ runner.temp }}/phpunit-baseline
+
+            - name: Commit and push
+              env:
+                  GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+                  BRANCH: ${{ github.ref_name }}
+                  PHP_VERSIONS: ${{ join(fromJSON(needs.php-versions.outputs.php-versions), ', ') }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  if git diff --quiet; then
+                      echo "Baselines are up to date."
+                      exit 0
+                  fi
+
+                  git config --local user.name "github-actions[bot]"
+                  git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  git commit --all --message "Regenerated PHPUnit baselines on PHP ${PHP_VERSIONS}"
+
+                  if [[ "$BRANCH" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                      HEAD_BRANCH="phpunit-baseline-${BRANCH}-${GITHUB_RUN_ID}"
+                      git push origin "HEAD:refs/heads/${HEAD_BRANCH}"
+                      gh pr create --base "$BRANCH" --head "$HEAD_BRANCH" \
+                          --title "[${BRANCH}] Regenerated PHPUnit baselines on PHP ${PHP_VERSIONS}" \
+                          --body "Generated by ${RUN_URL}."
+                  else
+                      git push origin "HEAD:refs/heads/${BRANCH}"
+                  fi
