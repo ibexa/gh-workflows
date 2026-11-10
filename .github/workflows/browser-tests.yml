@@ -34,8 +34,8 @@ on:
                 required: false
                 type: boolean
             php-image:
-                default: "ghcr.io/ibexa/docker/php:8.3-node22"
-                description: "The PHP image to use"
+                default: ""
+                description: "The PHP image to use, defaults to the image matching the project version"
                 required: false
                 type: string
             ci-scripts-branch:
@@ -106,6 +106,12 @@ env:
     PHP_INI_ENV_memory_limit: 1G
     COMPOSER_CACHE_DIR: ~/.composer/cache
     COMPOSER_IGNORE_PLATFORM_REQ: php
+    # Default PHP images per product version, anything not listed uses the fallback
+    PHP_IMAGES: >-
+        {
+            "5.0": "ghcr.io/ibexa/docker/php:8.3-node24",
+            "6.0": "ghcr.io/ibexa/docker/php:8.5-node24"
+        }
 
 jobs:
     setup-jobs:
@@ -164,6 +170,7 @@ jobs:
         outputs:
           build-id: ${{ steps.slug.outputs.build-id }}
           project-version: ${{ steps.project-version.outputs.version }}
+          php-image: ${{ steps.php-image.outputs.image }}
         steps:
             - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -178,13 +185,20 @@ jobs:
                     version="^3.3.x-dev"
                 fi
                 echo "version=$version" >> $GITHUB_OUTPUT
+                echo "minor=$(grep -oE '[0-9]+\.[0-9]+' <<< "$version" | head -n 1)" >> $GITHUB_OUTPUT
               env:
                 version: ${{ inputs.project-version }}
+
+            - name: Set up PHP image
+              id: php-image
+              run: echo "image=$image" >> $GITHUB_OUTPUT
+              env:
+                image: ${{ inputs.php-image || fromJSON(env.PHP_IMAGES)[steps.project-version.outputs.minor] || 'ghcr.io/ibexa/docker/php:8.3-node22' }}
 
             - name: Generate build identifier
               id: slug
               run: |
-                HASH=$(echo -n "${{ inputs.project-edition }}_${{ steps.project-version.outputs.version }}_${{ inputs.test-suite }}_${{ inputs.setup }}_${{ inputs.php-image }}_${{ inputs.ci-scripts-branch }}_${{ inputs.use-compatibility-layer }}_${{ inputs.install-connector-quable }}_${{ inputs.multirepository }}_${{ github.sha }}_${{ github.run_id }}_${{ github.run_attempt }}" | sha256sum | cut -c1-16)
+                HASH=$(echo -n "${{ inputs.project-edition }}_${{ steps.project-version.outputs.version }}_${{ inputs.test-suite }}_${{ inputs.setup }}_${{ steps.php-image.outputs.image }}_${{ inputs.ci-scripts-branch }}_${{ inputs.use-compatibility-layer }}_${{ inputs.install-connector-quable }}_${{ inputs.multirepository }}_${{ github.sha }}_${{ github.run_id }}_${{ github.run_attempt }}" | sha256sum | cut -c1-16)
                 echo "build-id=${{ inputs.project-edition }}-$HASH" >> $GITHUB_OUTPUT
 
             - name: Check Composer version
@@ -194,9 +208,9 @@ jobs:
               uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
                   path: ${{ env.COMPOSER_CACHE_DIR }}
-                  key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}-${{ github.sha }}
+                  key: ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ steps.php-image.outputs.image }}-${{ github.sha }}
                   restore-keys: |
-                    ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ inputs.php-image }}
+                    ${{ inputs.project-edition }}-${{ steps.project-version.outputs.version }}-${{ steps.php-image.outputs.image }}
 
             - name: Generate token
               id: generate_token
@@ -263,7 +277,7 @@ jobs:
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/${{ steps.project-version.outputs.version }}/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ steps.php-image.outputs.image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
@@ -278,7 +292,7 @@ jobs:
               run: |
                 curl -L "https://raw.githubusercontent.com/ibexa/ci-scripts/${{ inputs.ci-scripts-branch }}/bin/stable/prepare_project_edition.sh" > prepare_project_edition.sh
                 chmod +x prepare_project_edition.sh
-                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ inputs.php-image }}
+                ./prepare_project_edition.sh ${{ inputs.project-edition }} ${{ steps.project-version.outputs.version }} ${{ inputs.setup }}:/home/runner/db-tmpfs.yml ${{ steps.php-image.outputs.image }}
               env:
                 PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
                 CLOUDINARY_URL: "${{ secrets.CLOUDINARY_URL }}"
@@ -411,7 +425,7 @@ jobs:
 
             - name: Start docker containers and restore database
               env:
-                PHP_IMAGE: ${{ inputs.php-image }}
+                PHP_IMAGE: ${{ needs.build-project.outputs.php-image }}
                 COMPOSE_FILE: "${{ inputs.setup }}:/home/runner/db-tmpfs.yml"
               run: |
                 cd ${HOME}/build/project
@@ -474,7 +488,7 @@ jobs:
                   fi
                 fi
 
-            - if: inputs.multirepository && contains(inputs.setup, 'solr8.yml')
+            - if: inputs.multirepository && contains(inputs.setup, 'solr')
               name: Set up multirepository build with Solr
               run: |
                 cd ${HOME}/build/project
@@ -510,7 +524,7 @@ jobs:
                 # Reinstall database using the new repository
                 docker compose exec -T --user www-data app sh -c "php bin/console ibexa:install --no-interaction"
 
-            - if: inputs.multirepository && !contains(inputs.setup, 'elastic') && !contains(inputs.setup, 'solr8.yml')
+            - if: inputs.multirepository && !contains(inputs.setup, 'elastic') && !contains(inputs.setup, 'solr')
               name: Set up multirepository build with LSE
               run: |
                 cd ${HOME}/build/project

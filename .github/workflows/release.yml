@@ -142,9 +142,6 @@ jobs:
             python main.py >> generator_output
             echo '' >> generator_output
           done
-          echo "CHANGELOG_OUTPUT<<EOF" >> $GITHUB_ENV
-          echo "$(cat generator_output)" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
       - name: Archive markdown
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -161,7 +158,9 @@ jobs:
       - name: Push changelog to wiki
         working-directory: ./wiki
         run: |
-          echo "$CHANGELOG" > "Changelog-${BUILD_TAG}.md"
+          # Read the changelog from the file: passed via $GITHUB_ENV, a large one exceeds
+          # the per-variable size limit and every later process spawn fails
+          echo "$(cat ../generator_output)" > "Changelog-${BUILD_TAG}.md"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add "Changelog-${BUILD_TAG}.md"
@@ -172,7 +171,6 @@ jobs:
             echo "No changes to commit for ${BUILD_TAG}"
           fi
         env:
-          CHANGELOG: ${{ env.CHANGELOG_OUTPUT }}
           BUILD_TAG: ${{ env.BUILD_TAG }}
 
       - name: Create Release
