@@ -68,6 +68,11 @@ on:
                 required: false
                 type: boolean
                 description: "Install ibexa/connector-quable"                
+            package-setup-command:
+                default: ""
+                required: false
+                type: string
+                description: "Shell command run in the package checkout before the project is set up, for packages whose branches need a build step (e.g. vendoring npm packages that are only committed on their -next branch). Runs on the runner with its preinstalled Node and Yarn; GH_PACKAGES_TOKEN holds the EZROBOT_PAT secret for the GitHub npm registry"
         secrets:
             SLACK_WEBHOOK_URL:
                 required: false
@@ -92,6 +97,8 @@ on:
             LAMBDATEST_USERNAME:
                 required: false
             LAMBDATEST_ACCESS_KEY:
+                required: false
+            EZROBOT_PAT:
                 required: false
 
 env:
@@ -168,6 +175,12 @@ jobs:
               run: echo "WEB_HOST=http://varnish" >> $GITHUB_ENV
 
             - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - if: inputs.package-setup-command != ''
+              name: Run the package setup command
+              run: ${{ inputs.package-setup-command }}
+              env:
+                GH_PACKAGES_TOKEN: ${{ secrets.EZROBOT_PAT }}
 
             - name: Set up project version
               id: project-version
