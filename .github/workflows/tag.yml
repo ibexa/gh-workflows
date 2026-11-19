@@ -1,0 +1,111 @@
+name: Tag release (callee)
+
+on:
+    workflow_call:
+        inputs:
+            version:
+                description: 'Version to release, without the leading v (e.g. 1.1.5 or 1.2.0-alpha.1)'
+                type: string
+                required: true
+            release-branches:
+                description: 'Comma-separated branch schemes releases are made from: major.x, major.minor, main'
+                type: string
+                required: true
+            dry-run:
+                description: 'Run everything, including the release commit and the tag, without pushing them'
+                type: boolean
+                default: true
+            bump-command:
+                description: >-
+                    Shell command writing the version, available as $VERSION, into the files of the repository.
+                    The files it changes are committed as "Released <version>". Leave empty to tag without a commit.
+                type: string
+                default: ''
+            version-file:
+                description: 'File that has to contain the version after bump-command ran'
+                type: string
+                default: ''
+            allow-empty-release:
+                description: 'Release a commit that already carries a version tag'
+                type: boolean
+                default: false
+            skip-sequence-check:
+                description: 'Release a version that does not follow the latest stable tag of its line'
+                type: boolean
+                default: false
+        secrets:
+            AUTOMATION_CLIENT_ID:
+                description: 'GitHub App ID'
+                required: true
+            AUTOMATION_CLIENT_SECRET:
+                description: 'GitHub App private key'
+                required: true
+
+jobs:
+    tag:
+        name: Tag v${{ inputs.version }}
+        runs-on: "ubuntu-26.04"
+        timeout-minutes: 10
+
+        concurrency:
+            group: tag-${{ github.repository }}-${{ github.ref_name }}
+
+        permissions:
+            contents: read
+
+        env:
+            VERSION: ${{ inputs.version }}
+
+        steps:
+            # The default GITHUB_TOKEN cannot push to a stable branch or create a tag:
+            # both are restricted by the repository rulesets to the Ibexa Workflow Automation app.
+            - name: Generate GitHub App token and configure git
+              id: bot
+              uses: ibexa/gh-workflows/actions/setup-app-git-identity@main
+              with:
+                  gh-client-id: ${{ secrets.AUTOMATION_CLIENT_ID }}
+                  gh-client-secret: ${{ secrets.AUTOMATION_CLIENT_SECRET }}
+
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  fetch-depth: 0
+                  token: ${{ steps.bot.outputs.token }}
+
+            - name: Validate the version
+              uses: ibexa/gh-workflows/actions/validate-release-version@main
+              with:
+                  version: ${{ inputs.version }}
+                  release-branches: ${{ inputs.release-branches }}
+                  require-release-branch: ${{ !inputs.dry-run }}
+                  allow-empty-release: ${{ inputs.allow-empty-release }}
+                  skip-sequence-check: ${{ inputs.skip-sequence-check }}
+
+            - name: Bump the version
+              if: inputs.bump-command != ''
+              run: bash -euo pipefail -c "$BUMP_COMMAND"
+              env:
+                  BUMP_COMMAND: ${{ inputs.bump-command }}
+
+            - name: Check the bumped version
+              if: inputs.version-file != ''
+              run: |
+                  if ! grep --quiet --fixed-strings -- "$VERSION" "$VERSION_FILE"; then
+                      echo "::error::${VERSION_FILE} does not contain ${VERSION} after the bump"
+                      exit 1
+                  fi
+              env:
+                  VERSION_FILE: ${{ inputs.version-file }}
+
+            - name: Commit and tag
+              run: |
+                  if ! git diff --quiet; then
+                      git commit --all --message "Released ${VERSION}"
+                  fi
+
+                  git tag --annotate "v${VERSION}" --message "Released ${VERSION}"
+                  git show --stat "v${VERSION}"
+
+            # Note: --dry-run stops before the server evaluates the repository rulesets,
+            # so it proves authentication and shows the refs but cannot surface a permission error.
+            - name: Push the branch and the tag
+              run: git push --atomic ${{ inputs.dry-run && '--dry-run' || '' }} origin "HEAD:refs/heads/${GITHUB_REF_NAME}" "refs/tags/v${VERSION}"
