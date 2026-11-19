@@ -1,0 +1,53 @@
+name: "Validate a release version against the branch and the existing tags"
+author: 'Ibexa AS'
+description: >-
+    Checks that a version may be released from a branch of the repository checked
+    out in the working directory: it is semver, its tag does not exist, the branch
+    is a release branch of that version line and the version is the next one after
+    the latest stable tag of the line. The checkout has to contain the tags.
+
+inputs:
+    version:
+        description: 'Version to release, without the leading v (e.g. 1.1.5 or 1.2.0-alpha.1)'
+        required: true
+    release-branches:
+        description: >-
+            Comma-separated branch schemes releases are made from: major.x
+            (2.x releases 2.*.*), major.minor (5.0 releases 5.0.*) and main.
+        required: true
+    branch:
+        description: 'Branch the release is made from'
+        required: false
+        default: ${{ github.ref_name }}
+    require-release-branch:
+        description: >-
+            Whether the branch has to match one of the release-branches schemes.
+            Disable for a rehearsal from another branch; the version line is then
+            taken from the version and the first scheme.
+        required: false
+        default: 'true'
+    allow-empty-release:
+        description: 'Whether a commit that already carries a version tag may be released again'
+        required: false
+        default: 'false'
+    skip-sequence-check:
+        description: >-
+            Whether a version that does not follow the latest stable tag of its line may
+            be released, e.g. a fix of an older minor. The break is reported as a warning.
+        required: false
+        default: 'false'
+
+runs:
+    using: "composite"
+    steps:
+        -   name: Validate the release version
+            shell: bash
+            run: "${GITHUB_ACTION_PATH}/validate-release-version.bash"
+            env:
+                VERSION: ${{ inputs.version }}
+                BRANCH: ${{ inputs.branch }}
+                RELEASE_BRANCHES: ${{ inputs.release-branches }}
+                REQUIRE_RELEASE_BRANCH: ${{ inputs.require-release-branch }}
+                ALLOW_EMPTY_RELEASE: ${{ inputs.allow-empty-release }}
+                SKIP_SEQUENCE_CHECK: ${{ inputs.skip-sequence-check }}
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
