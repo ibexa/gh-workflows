@@ -72,7 +72,7 @@ jobs:
                   token: ${{ steps.bot.outputs.token }}
 
             - name: Validate the version
-              uses: ibexa/gh-workflows/actions/validate-release-version@tag-workflow
+              uses: ibexa/gh-workflows/actions/validate-release-version@main
               with:
                   version: ${{ inputs.version }}
                   release-branches: ${{ inputs.release-branches }}
