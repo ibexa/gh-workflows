@@ -20,17 +20,21 @@ SEMVER="^${NUMBER}\.${NUMBER}\.${NUMBER}(-${IDENTIFIER}(\.${IDENTIFIER})*)?\$"
 VERSION_LIKE='^v?[0-9]+\.[0-9]+'
 
 fail() {
-    echo "::error::$1" >&2
+    local message=$1
+
+    echo "::error::${message}" >&2
     exit 1
 }
 
 # Reports a break of the release sequence: fatal unless the sequence check is skipped.
 fail_sequence() {
+    local message=$1
+
     if [[ "${SKIP_SEQUENCE_CHECK:-false}" != 'true' ]]; then
-        fail "$1"
+        fail "$message"
     fi
 
-    echo "::warning::Sequence check skipped: $1" >&2
+    echo "::warning::Sequence check skipped: ${message}" >&2
 }
 
 if [[ ! "${VERSION:-}" =~ $SEMVER ]]; then
