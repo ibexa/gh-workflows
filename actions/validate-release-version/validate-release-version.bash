@@ -14,6 +14,10 @@ set -euo pipefail
 #   major.minor  5.0 releases 5.0.*, sequenced within that minor
 #   main         main releases anything, sequenced over all the tags
 
+SCHEME_MAJOR='major.x'
+SCHEME_MINOR='major.minor'
+SCHEME_MAIN='main'
+
 NUMBER='(0|[1-9][0-9]*)'
 IDENTIFIER='[0-9A-Za-z][0-9A-Za-z-]*'
 SEMVER="^${NUMBER}\.${NUMBER}\.${NUMBER}(-${IDENTIFIER}(\.${IDENTIFIER})*)?\$"
@@ -53,9 +57,9 @@ IFS=',' read -ra schemes <<< "${RELEASE_BRANCHES// /}"
 
 for scheme in "${schemes[@]}"; do
     case "$scheme" in
-        major.x) pattern="^${NUMBER}\.x\$" ;;
-        major.minor) pattern="^${NUMBER}\.${NUMBER}\$" ;;
-        main) pattern='^main$' ;;
+        "$SCHEME_MAJOR") pattern="^${NUMBER}\.x\$" ;;
+        "$SCHEME_MINOR") pattern="^${NUMBER}\.${NUMBER}\$" ;;
+        "$SCHEME_MAIN") pattern='^main$' ;;
         *) fail "Unknown release branch scheme '${scheme}'; expected major.x, major.minor or main" ;;
     esac
 
@@ -75,11 +79,11 @@ if [[ -z "$first_scheme" ]]; then
 fi
 
 if [[ "$branch_matched" == true ]]; then
-    if [[ "$scope" == 'major.x' && "$branch_major" != "$major" ]]; then
+    if [[ "$scope" == "$SCHEME_MAJOR" && "$branch_major" != "$major" ]]; then
         fail "Branch ${BRANCH} releases ${branch_major}.*.* only; got ${VERSION}"
     fi
 
-    if [[ "$scope" == 'major.minor' && ( "$branch_major" != "$major" || "$branch_minor" != "$minor" ) ]]; then
+    if [[ "$scope" == "$SCHEME_MINOR" && ( "$branch_major" != "$major" || "$branch_minor" != "$minor" ) ]]; then
         fail "Branch ${BRANCH} releases ${branch_major}.${branch_minor}.* only; got ${VERSION}"
     fi
 elif [[ "${REQUIRE_RELEASE_BRANCH:-true}" == 'true' ]]; then
@@ -119,8 +123,8 @@ while IFS= read -r tag; do
     tag_patch=${BASH_REMATCH[3]}
 
     [[ -z "${BASH_REMATCH[4]}" ]] || continue
-    [[ "$scope" == 'main' || "$tag_major" == "$major" ]] || continue
-    [[ "$scope" != 'major.minor' || "$tag_minor" == "$minor" ]] || continue
+    [[ "$scope" == "$SCHEME_MAIN" || "$tag_major" == "$major" ]] || continue
+    [[ "$scope" != "$SCHEME_MINOR" || "$tag_minor" == "$minor" ]] || continue
 
     if [[ -n "$latest" ]]; then
         read -r latest_major latest_minor latest_patch <<< "${latest//./ }"
@@ -144,25 +148,25 @@ if [[ -n "$latest" ]]; then
 
     allowed+=("${latest_major}.${latest_minor}.$(( latest_patch + 1 ))")
 
-    if [[ "$scope" != 'major.minor' ]]; then
+    if [[ "$scope" != "$SCHEME_MINOR" ]]; then
         allowed+=("${latest_major}.$(( latest_minor + 1 )).0")
     fi
 
-    if [[ "$scope" == 'main' ]]; then
+    if [[ "$scope" == "$SCHEME_MAIN" ]]; then
         allowed+=("$(( latest_major + 1 )).0.0")
     fi
 
     origin="the latest tag v${latest}"
 else
     case "$scope" in
-        major.x) allowed+=("${major}.0.0") ;;
-        major.minor) allowed+=("${major}.${minor}.0") ;;
-        main) allowed+=('1.0.0') ;;
+        "$SCHEME_MAJOR") allowed+=("${major}.0.0") ;;
+        "$SCHEME_MINOR") allowed+=("${major}.${minor}.0") ;;
+        *) allowed+=('1.0.0') ;;
     esac
 
     if [[ "$major" == '0' ]]; then
-        [[ "$scope" == 'major.minor' && "$minor" != '0' ]] || allowed+=('0.0.1')
-        [[ "$scope" == 'major.minor' ]] || allowed+=('0.1.0')
+        [[ "$scope" == "$SCHEME_MINOR" && "$minor" != '0' ]] || allowed+=('0.0.1')
+        [[ "$scope" == "$SCHEME_MINOR" ]] || allowed+=('0.1.0')
     fi
 
     origin='a line without a stable tag'
