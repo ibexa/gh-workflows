@@ -1,0 +1,33 @@
+name: 'PHPUnit deprecation baseline'
+author: 'Ibexa AS'
+description: >-
+    Regenerates PHPUnit deprecation baselines without third-party noise. `generate` runs every
+    phpunit*.xml(.dist) config declaring <source baseline="...">, drops deprecations triggered by
+    third-party code calling into third-party code, and writes the result to `directory`.
+    `merge` unions the baselines found in `directory` (one subdirectory per PHP version) into the
+    working directory.
+
+inputs:
+    command:
+        description: '`generate` or `merge`'
+        required: true
+    directory:
+        description: '`generate`: output directory. `merge`: directory holding one generated baseline set per subdirectory.'
+        required: true
+
+runs:
+    using: "composite"
+    steps:
+        -   if: ${{ inputs.command == 'generate' }}
+            shell: bash
+            run: php "${GITHUB_ACTION_PATH}/phpunit-baseline.php" generate "${DIRECTORY}"
+            env:
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+                DIRECTORY: ${{ inputs.directory }}
+
+        -   if: ${{ inputs.command == 'merge' }}
+            shell: bash
+            run: php "${GITHUB_ACTION_PATH}/phpunit-baseline.php" merge "${DIRECTORY}"/*/
+            env:
+                GITHUB_ACTION_PATH: ${{ github.action_path }}
+                DIRECTORY: ${{ inputs.directory }}
